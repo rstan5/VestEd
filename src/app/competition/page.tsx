@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
 import { DEMO_INVESTOR_ID, MIN_CONSISTENCY_ROUNDS, MIN_DRAWDOWN_OBS, MIN_RISK_OBS, type Round, type Standing } from "@/lib/domain";
-import { percent, shortDate, tone } from "@/lib/format";
+import { applyWindow, sortBoard, type BoardSortKey, type BoardWindow, type StandingMetrics, type Windowed } from "@/lib/board";
+import { percent, plainPercent, shortDate, tone } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio-state";
 import {
   clubById,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/sample-data";
 
 type Board = "individual" | "club" | "university";
-type SortKey = "rank" | "return" | "score" | "riskAdjusted" | "diversification" | "drawdown" | "consistency";
+type SortKey = BoardSortKey;
 
 const boards: Array<{ id: Board; label: string; noun: string }> = [
   { id: "individual", label: "Students", noun: "students" },
@@ -43,23 +44,16 @@ const sorts: Array<{ id: SortKey; label: string }> = [
 
 const MAX_COMPARE = 3;
 
-type Row = {
+type BaseRow = StandingMetrics & {
   id: string;
   name: string;
   href: string;
   affiliation: string;
   universityId: string;
-  seasonReturn: number;
-  roundReturn: number;
-  score: number;
-  riskAdjusted: number | null;
-  drawdown: number | null;
-  diversification: number;
-  consistency: number | null;
-  rank: number;
-  previousRank: number;
   self: boolean;
 };
+
+type Row = Windowed<BaseRow>;
 
 export default function LeaderboardPage() {
   const { ready, standings } = usePortfolio();
@@ -72,15 +66,17 @@ export default function LeaderboardPage() {
   const [compare, setCompare] = useState<string[]>([]);
 
   const round = rounds.find((item) => item.id === roundId);
-  const { rows: allRows, missing } = useMemo(() => buildRows(board, standings), [board, standings]);
-  const useRound = round?.status === "live";
+  const boardWindow = useMemo<BoardWindow>(() => (round ? { kind: "round", round } : { kind: "season" }), [round]);
+  const { rows: baseRows, missing } = useMemo(() => buildRows(board, standings), [board, standings]);
+  const allRows = useMemo(() => applyWindow(baseRows, boardWindow) ?? [], [baseRows, boardWindow]);
+  const useRound = boardWindow.kind === "round";
   const rows = useMemo(() => {
     const needle = query.toLowerCase().trim();
-    return allRows
+    const visible = allRows
       .filter((row) => row.name.toLowerCase().includes(needle) || row.affiliation.toLowerCase().includes(needle))
-      .filter((row) => university === "all" || row.universityId === university)
-      .sort((a, b) => compareRows(a, b, sort, useRound));
-  }, [allRows, query, university, sort, useRound]);
+      .filter((row) => university === "all" || row.universityId === university);
+    return sortBoard(visible, sort);
+  }, [allRows, query, university, sort]);
   const selected = compare.map((id) => allRows.find((row) => row.id === id)).filter((row): row is Row => Boolean(row));
   const noun = boards.find((item) => item.id === board)?.noun ?? "entries";
 
@@ -147,7 +143,7 @@ export default function LeaderboardPage() {
           <>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[13px] text-quiet">
               <p>
-                {rows.length} of {allRows.length} {noun} · {useRound && round ? `${round.name} return, provisional` : "Season to date"} · as of {shortDate(seasonMeta.asOf)}
+                {rows.length} of {allRows.length} {noun} · {useRound && round ? `${round.name} window, provisional rank by round return` : "Season to date"} · as of {shortDate(seasonMeta.asOf)}
               </p>
               <Tag kind="unavailable">Vs S&amp;P 500 unavailable</Tag>
             </div>
@@ -159,7 +155,7 @@ export default function LeaderboardPage() {
             {rows.length === 0 ? (
               <StatusNote kind="empty" title="No matches" body="No entries match that search or university filter. Official ranks do not change when you filter." action={<button type="button" className="v-btn quiet small" onClick={() => { setQuery(""); setUniversity("all"); }}>Clear filters</button>} />
             ) : (
-              <BoardTable rows={rows} useRound={useRound} compare={compare} onToggle={toggleCompare} board={board} />
+              <BoardTable rows={rows} compare={compare} onToggle={toggleCompare} board={board} />
             )}
           </>
         )}
@@ -172,11 +168,11 @@ export default function LeaderboardPage() {
   );
 }
 
-function BoardTable({ rows, useRound, compare, onToggle, board }: { rows: Row[]; useRound: boolean; compare: string[]; onToggle: (id: string) => void; board: Board }) {
+function BoardTable({ rows, compare, onToggle, board }: { rows: Row[]; compare: string[]; onToggle: (id: string) => void; board: Board }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-rule bg-paper">
       <table className="v-table">
-        <caption className="sr-only">Official standings. The rank column is the official rank and does not change when you sort or filter.</caption>
+        <caption className="sr-only">Official standings for the selected window. The rank column is that window&apos;s official rank and does not change when you sort or filter.</caption>
         <thead>
           <tr>
             <th className="w-[72px] text-left">Rank</th>
@@ -192,15 +188,15 @@ function BoardTable({ rows, useRound, compare, onToggle, board }: { rows: Row[];
         </thead>
         <tbody>
           {rows.map((row) => {
-            const value = useRound ? row.roundReturn : row.seasonReturn;
+            const value = row.window.return;
             const checked = compare.includes(row.id);
             return (
               <tr key={row.id} data-self={row.self}>
                 <td className="mono text-[15px] text-deep">
-                  {row.rank}
-                  <span className="mt-0.5 block text-[11px] md:hidden"><Movement current={row.rank} previous={row.previousRank} /></span>
+                  {row.window.rank}
+                  <span className="mt-0.5 block text-[11px] md:hidden"><RankMove row={row} /></span>
                 </td>
-                <td className="hidden text-[13px] md:table-cell"><Movement current={row.rank} previous={row.previousRank} /></td>
+                <td className="hidden text-[13px] md:table-cell"><RankMove row={row} /></td>
                 <td>
                   <span className="flex items-center gap-2">
                     <Link href={row.href} className="text-[15px] text-forest hover:underline">{row.name}</Link>
@@ -209,10 +205,10 @@ function BoardTable({ rows, useRound, compare, onToggle, board }: { rows: Row[];
                   <span className="block text-[12px] text-quiet">{row.affiliation}</span>
                 </td>
                 <td className={`num mono ${tone(value)}`}>{percent(value)}</td>
-                <td className="num mono hidden md:table-cell">{row.score.toFixed(1)}</td>
-                <td className="num hidden lg:table-cell">{row.riskAdjusted === null ? <Insufficient /> : <span className="mono">{row.riskAdjusted.toFixed(2)}</span>}</td>
-                <td className="num hidden md:table-cell">{row.drawdown === null ? <Insufficient /> : <span className="mono">{percent(row.drawdown)}</span>}</td>
-                <td className="num mono hidden lg:table-cell">{Math.round(row.diversification * 100)}</td>
+                <td className="num hidden md:table-cell"><Figure value={row.window.score} render={(score) => score.toFixed(1)} /></td>
+                <td className="num hidden lg:table-cell"><Figure value={row.window.riskAdjusted} render={(risk) => risk.toFixed(2)} /></td>
+                <td className="num hidden md:table-cell"><Figure value={row.window.drawdown} render={(loss) => plainPercent(loss)} /></td>
+                <td className="num hidden lg:table-cell"><Figure value={row.window.diversification} render={(score) => `${Math.round(score * 100)}`} /></td>
                 <td className="text-center">
                   <input
                     type="checkbox"
@@ -282,13 +278,13 @@ function CompareTray({ rows, onRemove, onClear, useRound }: { rows: Row[]; onRem
               </tr>
             </thead>
             <tbody>
-              <CompareLine label="Official rank" rows={rows} render={(row) => <span className="mono">{row.rank}</span>} />
-              <CompareLine label={useRound ? "Round return" : "Season return"} rows={rows} render={(row) => <span className={`mono ${tone(useRound ? row.roundReturn : row.seasonReturn)}`}>{percent(useRound ? row.roundReturn : row.seasonReturn)}</span>} />
-              <CompareLine label="Score" rows={rows} render={(row) => <span className="mono">{row.score.toFixed(1)}</span>} />
-              <CompareLine label="Risk-adjusted" rows={rows} render={(row) => (row.riskAdjusted === null ? <Insufficient /> : <span className="mono">{row.riskAdjusted.toFixed(2)}</span>)} />
-              <CompareLine label="Drawdown" rows={rows} render={(row) => (row.drawdown === null ? <Insufficient /> : <span className="mono">{percent(row.drawdown)}</span>)} />
-              <CompareLine label="Diversification" rows={rows} render={(row) => <span className="mono">{Math.round(row.diversification * 100)}</span>} />
-              <CompareLine label="Consistency" rows={rows} render={(row) => (row.consistency === null ? <Insufficient /> : <span className="mono">{Math.round(row.consistency * 100)}</span>)} />
+              <CompareLine label="Official rank" rows={rows} render={(row) => <span className="mono">{row.window.rank}</span>} />
+              <CompareLine label={useRound ? "Round return" : "Season return"} rows={rows} render={(row) => <span className={`mono ${tone(row.window.return)}`}>{percent(row.window.return)}</span>} />
+              <CompareLine label="Score" rows={rows} render={(row) => <Figure value={row.window.score} render={(score) => score.toFixed(1)} />} />
+              <CompareLine label="Risk-adjusted" rows={rows} render={(row) => <Figure value={row.window.riskAdjusted} render={(risk) => risk.toFixed(2)} />} />
+              <CompareLine label="Drawdown" rows={rows} render={(row) => <Figure value={row.window.drawdown} render={(loss) => plainPercent(loss)} />} />
+              <CompareLine label="Diversification" rows={rows} render={(row) => <Figure value={row.window.diversification} render={(score) => `${Math.round(score * 100)}`} />} />
+              <CompareLine label="Consistency" rows={rows} render={(row) => <Figure value={row.window.consistency} render={(score) => `${Math.round(score * 100)}`} />} />
               <CompareLine label="Vs S&P 500" rows={rows} render={() => <span className="text-quiet">Unavailable</span>} />
             </tbody>
           </table>
@@ -318,6 +314,8 @@ function Methodology() {
         <p className="text-forest">The rank column is the official rank. Sorting and filtering change the view, never the number.</p>
         <ul className="mt-3 list-disc space-y-1 pl-4">
           <li>Score weights: return 30, risk-adjusted 20, drawdown 15, diversification 15, consistency 10, vs benchmark 10. Missing parts are dropped and the rest renormalized.</li>
+          <li>Drawdown is the largest loss from a peak, shown as a positive number. A smaller loss ranks higher.</li>
+          <li>Choosing a round ranks by that round&apos;s window. Statistics not stored for the round read Not enough data.</li>
           <li>Drawdown needs {MIN_DRAWDOWN_OBS} return intervals, risk-adjusted needs {MIN_RISK_OBS}, consistency needs {MIN_CONSISTENCY_ROUNDS} finalized rounds. Below that it reads Not enough data, not zero.</li>
           <li>Club and university figures are equal-weight averages of eligible students, so size alone does not help.</li>
           <li>Benchmark-relative return is unavailable until a licensed S&amp;P 500 total-return series is connected.</li>
@@ -343,6 +341,15 @@ function Insufficient() {
   return <span className="text-[12px] text-quiet">Not enough data</span>;
 }
 
+function Figure({ value, render }: { value: number | null; render: (value: number) => string }) {
+  return value === null ? <Insufficient /> : <span className="mono">{render(value)}</span>;
+}
+
+function RankMove({ row }: { row: Row }) {
+  if (row.window.previousRank === null) return <span className="text-muted">—</span>;
+  return <Movement current={row.window.rank} previous={row.window.previousRank} />;
+}
+
 function BoardLoading() {
   return (
     <LoadingBlock label="Loading standings">
@@ -359,8 +366,8 @@ function roundStatusLabel(round: Round): string {
   return "Scheduled";
 }
 
-function buildRows(board: Board, standings: Standing[]): { rows: Row[]; missing: number } {
-  const rows: Row[] = [];
+function buildRows(board: Board, standings: Standing[]): { rows: BaseRow[]; missing: number } {
+  const rows: BaseRow[] = [];
   let missing = 0;
   if (board === "individual") {
     for (const row of standings) {
@@ -432,22 +439,3 @@ function metrics(row: Pick<Standing, "seasonReturn" | "roundReturn" | "score" | 
   };
 }
 
-function compareRows(a: Row, b: Row, sort: SortKey, useRound: boolean): number {
-  if (sort === "rank") return a.rank - b.rank;
-  const left = sortValue(a, sort, useRound);
-  const right = sortValue(b, sort, useRound);
-  if (left === null && right === null) return a.rank - b.rank;
-  if (left === null) return 1;
-  if (right === null) return -1;
-  const order = sort === "drawdown" ? Math.abs(left) - Math.abs(right) : right - left;
-  return order === 0 ? a.rank - b.rank : order;
-}
-
-function sortValue(row: Row, sort: Exclude<SortKey, "rank">, useRound: boolean): number | null {
-  if (sort === "return") return useRound ? row.roundReturn : row.seasonReturn;
-  if (sort === "score") return row.score;
-  if (sort === "riskAdjusted") return row.riskAdjusted;
-  if (sort === "diversification") return row.diversification;
-  if (sort === "drawdown") return row.drawdown;
-  return row.consistency;
-}

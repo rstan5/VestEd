@@ -104,10 +104,12 @@ export type MetricKey =
   | "consistency"
   | "relative";
 
-export type ComponentAvailability = "official" | "insufficient" | "educational";
+export type ComponentAvailability = "official" | "insufficient" | "unavailable" | "educational";
+
+export type ScoreComponentKey = "return" | "risk" | "drawdown" | "diversification" | "consistency" | "relative";
 
 export type ScoreComponent = {
-  key: string;
+  key: ScoreComponentKey;
   label: string;
   value: number | null;
   display: string;
@@ -117,16 +119,17 @@ export type ScoreComponent = {
 };
 
 export type PerformanceSnapshot = {
-  returnPct: number;
+  returnPct: number | null;
   riskAdjusted: number | null;
   drawdown: number | null;
-  diversification: number;
+  diversification: number | null;
   volatility: number | null;
   consistency: number | null;
   relative: number | null;
   score: number | null;
   scoreLabel: "Official" | "Partial" | "Unavailable";
   components: ScoreComponent[];
+  included: ScoreComponentKey[];
   observations: number;
 };
 
@@ -137,9 +140,9 @@ export type Standing = {
   score: number;
   riskAdjusted: number | null;
   drawdown: number | null;
-  diversification: number;
+  diversification: number | null;
   consistency: number | null;
-  relative: number;
+  relative: number | null;
   rank: number;
   previousRank: number;
 };
