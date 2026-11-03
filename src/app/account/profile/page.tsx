@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProfileForm } from "@/components/account/profile-form";
-import { Tag } from "@/components/ui";
+import { AffiliationTag, ClubStatusTag } from "@/components/campus/campus-tags";
+import { roleLabel } from "@/lib/campus/types";
 import { requireAccount } from "@/lib/account/session";
 
 export const metadata: Metadata = { title: "Profile · VestEd" };
 
 export default async function ProfilePage() {
   const account = await requireAccount("/account/profile");
+  const { affiliation, club } = account.campus;
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
       <section aria-labelledby="profile-heading">
@@ -20,9 +22,18 @@ export default async function ProfilePage() {
       <aside aria-labelledby="status-heading" className="lg:pt-14">
         <h2 id="status-heading" className="text-sm text-quiet">Account status</h2>
         <dl className="mt-3 divide-y divide-rule border-y border-rule text-sm">
-          <Row label="Account">Individual</Row>
-          <Row label="University"><Tag kind="unavailable">Not verified</Tag></Row>
-          <Row label="Club">None</Row>
+          <Row label="Account">{club ? "Club member" : "Individual"}</Row>
+          <Row label="University"><AffiliationTag affiliation={affiliation} /></Row>
+          <Row label="Club">
+            {club ? (
+              <span className="flex flex-col items-end gap-1 text-right">
+                <Link href={`/campus/clubs/${club.clubId}`} className="underline-offset-4 hover:underline">{club.clubName} · {roleLabel(club.role)}</Link>
+                <ClubStatusTag club={club} />
+              </span>
+            ) : (
+              "None"
+            )}
+          </Row>
           <Row label="Holdings">{account.holdingsPublic ? "Published" : "Private"}</Row>
         </dl>
         <div className="mt-5 space-y-2 text-sm">

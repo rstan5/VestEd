@@ -8,7 +8,8 @@
     "start": "next start --hostname 127.0.0.1 --port 3100",
     "lint": "eslint",
     "test": "tsx --test 'src/**/*.test.ts'",
-    "jobs:once": "tsx scripts/run-jobs.ts"
+    "jobs:once": "tsx scripts/run-jobs.ts",
+    "campus:review": "tsx scripts/campus-review.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

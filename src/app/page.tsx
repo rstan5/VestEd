@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { QuietLine } from "@/components/chart";
+import { AffiliationTag, ClubStatusTag } from "@/components/campus/campus-tags";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
 import { useAccountState } from "@/lib/account/context";
 import { firstName as firstNameOf } from "@/lib/account/types";
+import { affiliationShort, roleLabel } from "@/lib/campus/types";
 import { CASH_DRAG_THRESHOLD } from "@/lib/domain";
 import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/format";
 import type { Book } from "@/lib/portfolio";
@@ -29,6 +31,7 @@ export default function HomePage() {
   if (!ready) return <HomeLoading />;
 
   const account = accountState.account;
+  const { affiliation, club } = account.campus;
   const firstName = firstNameOf(account.displayName);
   const official = standings.find((row) => row.investorId === standing.investorId);
   const action = account.onboarded
@@ -43,10 +46,14 @@ export default function HomePage() {
         <p className="text-sm text-quiet">{seasonMeta.name} · {round.name}</p>
         <h1 className="serif mt-1 text-[40px] leading-[1.1] text-forest md:text-[48px]">{account.onboarded ? "Welcome back" : "Welcome"}, {firstName}.</h1>
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-quiet" data-testid="account-standing">
-          <Tag>Individual account</Tag>
-          <Tag kind="unavailable">University not verified</Tag>
-          <span>No club needed to compete.</span>
-          <Link href="/account/verification" className="text-primary underline-offset-4 hover:underline">Verify a university</Link>
+          {club ? <Tag>{roleLabel(club.role)} · {club.clubName}</Tag> : <Tag>Individual account</Tag>}
+          <AffiliationTag affiliation={affiliation} />
+          {club ? null : <span>No club needed to compete.</span>}
+          {affiliation?.status === "verified" ? null : (
+            <Link href="/account/verification" className="text-primary underline-offset-4 hover:underline">
+              {affiliation?.status === "pending" ? "Verification status" : "Verify a university"}
+            </Link>
+          )}
         </p>
       </header>
 
@@ -120,10 +127,17 @@ export default function HomePage() {
             )}
           </StripItem>
           <StripItem label="Club">
-            <span className="text-sm text-quiet">Not in a club · competing as an individual</span>
+            {club ? (
+              <span className="flex flex-wrap items-center gap-2">
+                <Link href={`/campus/clubs/${club.clubId}`} className="text-sm text-forest underline-offset-4 hover:underline">{club.clubName}</Link>
+                <ClubStatusTag club={club} />
+              </span>
+            ) : (
+              <Link href="/campus" className="text-sm text-quiet underline-offset-4 hover:underline">Not in a club · competing as an individual</Link>
+            )}
           </StripItem>
           <StripItem label="University">
-            <Link href="/account/verification" className="text-sm text-quiet underline-offset-4 hover:underline">Not verified</Link>
+            <Link href="/account/verification" className="text-sm text-quiet underline-offset-4 hover:underline">{affiliationShort(affiliation)}</Link>
           </StripItem>
           <li className="flex items-center px-5 py-4">
             <Link href="/competition" className="text-sm text-primary underline-offset-4 hover:underline">Standings →</Link>

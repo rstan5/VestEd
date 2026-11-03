@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { isProtectedPath, routeDecision, safeNext } from "./routes";
 
 test("personal pages require a session", () => {
-  for (const path of ["/", "/portfolio", "/onboarding", "/account/profile", "/account/privacy", "/students/abc"]) {
+  for (const path of ["/", "/portfolio", "/onboarding", "/account/profile", "/account/privacy", "/students/abc", "/campus", "/campus/clubs/abc"]) {
     assert.equal(isProtectedPath(path), true, path);
   }
   for (const path of ["/login", "/signup", "/markets", "/competition", "/clubs", "/portfolios"]) {

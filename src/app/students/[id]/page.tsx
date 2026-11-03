@@ -6,6 +6,7 @@ import { StatusNote, Tag } from "@/components/ui";
 import { plainPercent } from "@/lib/format";
 import { requireAccount } from "@/lib/account/session";
 import { memberSinceLabel } from "@/lib/account/types";
+import { roleLabel, toClubRole } from "@/lib/campus/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Student profile · VestEd" };
@@ -21,9 +22,10 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
   if (!supabase) notFound();
 
   // Only the safe projection functions are read here. The private book is never queried.
-  const [profileResult, holdingsResult] = await Promise.all([
+  const [profileResult, holdingsResult, campusResult] = await Promise.all([
     supabase.rpc("public_profile", { target: id }).maybeSingle(),
     supabase.rpc("public_holdings", { target: id }),
+    supabase.rpc("public_campus", { target: id }).maybeSingle(),
   ]);
   if (profileResult.error) {
     return <StatusNote kind="error" title="This profile could not be loaded" body="The account service did not respond. Reload the page to try again." />;
@@ -32,6 +34,7 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
   if (!profile) notFound();
 
   const holdings = holdingsResult.data ?? [];
+  const campus = campusResult.data;
   const isSelf = viewer.id === profile.id;
   const details = [profile.class_year ? `Class of ${profile.class_year}` : null, profile.concentration].filter(Boolean).join(" · ");
 
@@ -49,9 +52,24 @@ export default async function StudentProfilePage({ params }: { params: Promise<{
         <h1 className="serif mt-1 text-[40px] leading-[1.1] text-forest" data-testid="public-name">{profile.display_name}</h1>
         {details ? <p className="mt-2 text-sm text-quiet">{details}</p> : null}
         <ul className="mt-4 flex flex-wrap gap-2" aria-label="Status">
-          <li><Tag>Individual</Tag></li>
-          <li><Tag kind="unavailable">University not verified</Tag></li>
-          <li><Tag>No club</Tag></li>
+          {campusResult.error ? (
+            <li><Tag kind="unavailable">Campus status unavailable</Tag></li>
+          ) : (
+            <>
+              <li>
+                {campus?.verified_university ? <Tag>Verified · {campus.verified_university}</Tag> : <Tag kind="unavailable">University not verified</Tag>}
+              </li>
+              <li>
+                {campus?.club_id && campus.club_name ? (
+                  <Link href={`/campus/clubs/${campus.club_id}`} className="v-tag hover:border-sage">
+                    {roleLabel(toClubRole(campus.club_role ?? "member"))} · {campus.club_name}{campus.club_official ? "" : " (not official)"}
+                  </Link>
+                ) : (
+                  <Tag>Individual · No club</Tag>
+                )}
+              </li>
+            </>
+          )}
           <li><Tag>Member since {memberSinceLabel(profile.member_since)}</Tag></li>
         </ul>
       </header>

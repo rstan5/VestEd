@@ -60,6 +60,27 @@ npx supabase test db                       # pgTAP tests in supabase/tests
 - Holdings are private by default. `public_profile` and `public_holdings` are the only cross-student reads, and they return a safe projection: name, class year, concentration, join month, and, only while published, tickers and weights. Never cash, quantities, cost, orders, or activity.
 - Local signup does not require email confirmation. Password recovery mail goes to Mailpit on port 3133.
 
+## Campus
+
+University affiliation and clubs live in `supabase/migrations/20261103130000_campus.sql`. Students have read access only. Every change is a database function that takes the acting student from the session token, so a form cannot act for someone else.
+
+- **University verification** (`/account/verification`). A university email at a recognized domain (or a subdomain of one) creates a **pending** affiliation. It never marks the student verified by itself. Only a reviewer decision sets **verified**. Other students see a university only after it is verified.
+- **Clubs** (`/campus`, `/campus/clubs/<id>`). Any student can start a club and becomes its founder. Students apply; the founder or a moderator approves or declines. Only the founder assigns moderators, and nobody can change their own role or take leadership. A student belongs to one club at a time. A club with no members is fine, and so is a student with no club.
+- **Admin review.** A new club is **not official** until a reviewer approves it. Any student can file a dispute. A disputed club shows as in admin review and is not official; leadership cannot change and the club cannot be made official until a reviewer resolves the dispute. Members and moderators cannot resolve it.
+
+Reviews use the server-only service role from `.env.local` (`SUPABASE_SERVICE_ROLE_KEY`, from `npx supabase status -o env`). There is no admin console.
+
+```bash
+npm run campus:review -- list
+npm run campus:review -- club <club-id> official|not_official
+npm run campus:review -- dispute <dispute-id> dismissed|upheld
+npm run campus:review -- affiliation <affiliation-id> verified|rejected
+```
+
+`src/lib/campus/campus.integration.test.ts` runs these rules against local Supabase when it is up and `.env.local` has its keys. When the stack is down, its cases are reported as skipped. `supabase/tests/campus_rls.test.sql` covers the same rules in pgTAP.
+
+The sample club and university directories (`/clubs`, `/universities`) and the standings boards still use sample data.
+
 ## Environment
 
 `.env.example` lists every variable with an empty value. Copy it to `.env.local`, which git ignores. Provider keys (`MARKET_DATA_API_KEY`, `AI_API_KEY`) stay empty until licensed credentials exist; with no key, market data and AI replies are unavailable or labeled samples. `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never commit it and never give it a `NEXT_PUBLIC_` prefix.
@@ -93,12 +114,14 @@ Only the in-memory sample store exists so far. The Postgres store comes with the
 ## What is mocked
 
 - Quotes, charts on security pages, news, and standings for everyone except Maya's provisional book.
-- University verification and club applications. Applications do not change rosters.
+- The sample club and university directories under `/clubs` and `/universities`. Real student clubs are under `/campus`.
 - AI Professor replies. They are deterministic templates tagged Demonstration.
 - Prior-year pages show archived champions only.
 
 ## Not implemented
 
+- Email-ownership checks for university addresses. A reviewer decides verification instead.
+- Club and university standings from real memberships.
 - Server-side holdings: `published_holdings_source` returns no rows until the server ledger stores positions.
 - A market-data vendor, corporate actions, and a real trading calendar.
 - Server-authoritative orders and immutable round-close jobs.

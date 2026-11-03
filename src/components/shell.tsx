@@ -5,15 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/app/auth/actions";
 import { useAccountState } from "@/lib/account/context";
-import { firstName, initials } from "@/lib/account/types";
+import { firstName, initials, type Account } from "@/lib/account/types";
+import { affiliationLabel, campusLine } from "@/lib/campus/types";
 import { countdown, shortDate } from "@/lib/format";
 import { currentRound, rounds, seasonMeta } from "@/lib/sample-data";
 import { usePortfolio } from "@/lib/portfolio-state";
 
 // Routes on the student shell. Markets, Campus, and Professor keep the prototype
 // chrome until their own rollout.
-const STUDENT_ROUTES = new Set(["/", "/portfolio", "/competition", "/login", "/signup", "/onboarding"]);
-const STUDENT_PREFIXES = ["/account/", "/students/"];
+const STUDENT_ROUTES = new Set(["/", "/portfolio", "/competition", "/campus", "/login", "/signup", "/onboarding"]);
+const STUDENT_PREFIXES = ["/account/", "/students/", "/campus/"];
 
 function usesStudentShell(pathname: string): boolean {
   return STUDENT_ROUTES.has(pathname) || STUDENT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
@@ -24,15 +25,15 @@ export const primaryNav = [
   { href: "/portfolio", label: "Portfolio", match: ["/portfolio"], icon: "ledger" },
   { href: "/markets", label: "Markets", match: ["/markets", "/research"], icon: "markets" },
   { href: "/competition", label: "Compete", match: ["/competition"], icon: "compete" },
-  { href: "/clubs", label: "Campus", match: ["/clubs", "/universities"], icon: "campus" },
+  { href: "/campus", label: "Campus", match: ["/campus", "/clubs", "/universities"], icon: "campus" },
 ] as const;
 
 type AccountLink = { label: string; href: string; note?: string };
 
-export const accountLinks = (): AccountLink[] => [
+export const accountLinks = (verificationNote = "Not verified"): AccountLink[] => [
   { label: "Profile", href: "/account/profile" },
   { label: "Privacy", href: "/account/privacy" },
-  { label: "University verification", href: "/account/verification", note: "Not verified" },
+  { label: "University verification", href: "/account/verification", note: verificationNote },
   { label: "Settings", href: "/account/settings" },
 ];
 
@@ -109,10 +110,11 @@ function AccountMenu() {
       </span>
     );
   }
-  return <SignedInMenu displayName={state.account.displayName} />;
+  return <SignedInMenu account={state.account} />;
 }
 
-function SignedInMenu({ displayName }: { displayName: string }) {
+function SignedInMenu({ account }: { account: Account }) {
+  const displayName = account.displayName;
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -156,11 +158,11 @@ function SignedInMenu({ displayName }: { displayName: string }) {
         <div id="account-menu" className="absolute right-0 top-[calc(100%+8px)] w-[320px] max-w-[calc(100vw-40px)] rounded-2xl border border-rule bg-paper p-2 shadow-[0_18px_40px_rgba(16,59,43,0.08)]">
           <div className="px-3 pb-3 pt-2">
             <div className="text-sm font-medium text-forest" data-testid="account-name">{displayName}</div>
-            <div className="text-xs text-quiet">Individual account · University not verified</div>
+            <div className="text-xs text-quiet" data-testid="account-campus-line">{campusLine(account.campus)}</div>
           </div>
           <nav aria-label="Account">
             <ul className="border-t border-rule pt-1">
-              {accountLinks().map((item) => (
+              {accountLinks(affiliationLabel(account.campus.affiliation).text).map((item) => (
                 <li key={item.label}>
                   <Link href={item.href} className="v-menu-item" onClick={() => setOpen(false)}>
                     <span>{item.label}</span>
@@ -244,7 +246,7 @@ function LegacyShell({ pathname, children }: { pathname: string; children: React
             <>
               Signed in
               <div className="mt-1 text-sm text-forest">{state.account.displayName}</div>
-              Individual · University not verified
+              {campusLine(state.account.campus)}
             </>
           ) : (
             <>

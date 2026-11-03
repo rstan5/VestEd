@@ -1,4 +1,4 @@
-const PROTECTED_PREFIXES = ["/portfolio", "/onboarding", "/account", "/students"];
+const PROTECTED_PREFIXES = ["/portfolio", "/onboarding", "/account", "/students", "/campus"];
 const GUEST_ONLY = ["/login", "/signup"];
 
 export type RouteDecision = { kind: "next" } | { kind: "redirect"; to: string };

@@ -1,3 +1,5 @@
+import type { CampusSummary } from "@/lib/campus/types";
+
 export type Account = {
   id: string;
   email: string;
@@ -7,6 +9,7 @@ export type Account = {
   holdingsPublic: boolean;
   onboarded: boolean;
   memberSince: string;
+  campus: CampusSummary;
 };
 
 export type AccountState =
