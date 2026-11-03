@@ -105,6 +105,11 @@ test("the repository contains no provider or service-role secret", () => {
   }
 });
 
+test("npm test expands nested test files", () => {
+  const scripts = JSON.parse(read("package.json")).scripts as Record<string, string>;
+  assert.match(scripts.test, /'src\/\*\*\/\*\.test\.ts'|"src\/\*\*\/\*\.test\.ts"/);
+});
+
 test("the app binds loopback on port 3100", () => {
   const scripts = JSON.parse(read("package.json")).scripts as Record<string, string>;
   for (const name of ["dev", "start"]) {

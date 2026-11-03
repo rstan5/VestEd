@@ -48,6 +48,26 @@ All host ports stay inside 3130–3159. Studio, Realtime, analytics, the connect
 ## Environment
 
 `.env.example` lists every variable with an empty value. Copy it to `.env.local`, which git ignores. Provider keys (`MARKET_DATA_API_KEY`, `AI_API_KEY`) stay empty until licensed credentials exist; with no key, market data and AI replies are unavailable or labeled samples. `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never commit it and never give it a `NEXT_PUBLIC_` prefix.
+## Adapters and jobs
+
+Market, benchmark, and model access go through adapters. None of them makes a network call in this build.
+
+| Adapter | Key empty | Key set |
+| --- | --- | --- |
+| `createMarketAdapter` (`src/lib/market`) | Quotes, history, and news labeled `sample`; unknown tickers are `unavailable` | `unavailable` until a licensed vendor adapter exists |
+| `createBenchmarkAdapter` | `unavailable` (no S&P 500 total-return license) | `unavailable` |
+| `createModelAdapter` (`src/lib/model`) | `demonstration` replies, labeled as not a model call | `unavailable` until a provider is connected |
+
+No adapter returns `live` or `delayed`, a vendor name, or a freshness timestamp.
+
+Fills, valuations, and round close live in `src/lib/jobs`. Each job is a one-shot async function that takes a store, a session clock, and `now`. `runJobsOnce` runs all three, and `startJobTimer` calls it on an interval for local runs. A hosted scheduled job can call the same function.
+
+```bash
+npm run jobs:once                          # one pass over the labeled sample fixture
+npx tsx scripts/run-jobs.ts --every 60     # local timer; Ctrl-C stops it
+```
+
+Only the in-memory sample store exists so far. The Postgres store comes with the server ledger. The session clock knows regular New York hours and DST. Holidays and early closes must be passed in.
 ## What works
 
 - Dashboard, portfolio, markets, security pages, competition boards, investor and club profiles, universities, research, and the professor chat.

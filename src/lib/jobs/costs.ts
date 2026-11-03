@@ -1,0 +1,1 @@
+export const SIMULATION_COST_PER_SHARE = "0.01";
