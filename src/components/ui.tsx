@@ -51,3 +51,63 @@ export function Movement({ current, previous }: { current: number; previous: num
 export function TextLink({ href, children }: { href: string; children: React.ReactNode }) {
   return <Link className="text-primary underline-offset-2 hover:underline" href={href}>{children}</Link>;
 }
+
+export type TagKind = "default" | "sample" | "provisional" | "unavailable" | "error";
+
+export function Tag({ kind = "default", children }: { kind?: TagKind; children: React.ReactNode }) {
+  return <span className="v-tag" data-kind={kind === "default" ? undefined : kind}>{children}</span>;
+}
+
+type StatusKind = "empty" | "unavailable" | "error";
+
+const statusLabel: Record<StatusKind, string> = {
+  empty: "Nothing here yet",
+  unavailable: "Unavailable",
+  error: "Error",
+};
+
+const statusStyle: Record<StatusKind, string> = {
+  empty: "border-dashed border-rule bg-paper",
+  unavailable: "border-[#dfe2dd] bg-[#f6f7f5]",
+  error: "border-[#efd2cc] bg-loss-soft",
+};
+
+export function StatusNote({
+  kind,
+  title,
+  body,
+  action,
+  compact = false,
+}: {
+  kind: StatusKind;
+  title: string;
+  body?: React.ReactNode;
+  action?: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={classNames("rounded-2xl border", statusStyle[kind], compact ? "px-4 py-3" : "px-6 py-8")}
+      role={kind === "error" ? "alert" : "status"}
+      data-state={kind}
+    >
+      <Tag kind={kind === "empty" ? "default" : kind}>{statusLabel[kind]}</Tag>
+      <p className={classNames("text-forest", compact ? "mt-2 text-sm font-medium" : "serif mt-3 text-xl")}>{title}</p>
+      {body ? <p className={classNames("max-w-xl text-quiet", compact ? "mt-1 text-[13px] leading-5" : "mt-2 text-sm leading-6")}>{body}</p> : null}
+      {action ? <div className="mt-4">{action}</div> : null}
+    </div>
+  );
+}
+
+export function Skeleton({ className }: { className?: string }) {
+  return <span className={classNames("v-skeleton", className)} aria-hidden="true" />;
+}
+
+export function LoadingBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="status" aria-live="polite" aria-busy="true" data-state="loading">
+      <span className="sr-only">{label}</span>
+      {children}
+    </div>
+  );
+}

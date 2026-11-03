@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Security } from "@/lib/domain";
 import { money } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio-state";
+import { securities } from "@/lib/sample-data";
 
 export function OrderTicket({ security }: { security: Security }) {
   const { book, submitOrder } = usePortfolio();
@@ -84,6 +85,195 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{label}</dt>
       <dd className="mono text-forest">{value}</dd>
+    </div>
+  );
+}
+
+type SheetStep = "edit" | "review" | "done";
+
+export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; onClose: () => void }) {
+  const { book, submitOrder } = usePortfolio();
+  const [ticker, setTicker] = useState(initialTicker);
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [quantity, setQuantity] = useState("1");
+  const [step, setStep] = useState<SheetStep>("edit");
+  const [error, setError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const security = securities.find((item) => item.ticker === ticker);
+  const shares = Number(quantity);
+  const owned = book.positions.find((position) => position.ticker === ticker)?.quantity ?? 0;
+  const estimate = security && Number.isFinite(shares) ? shares * (side === "buy" ? security.price + 0.01 : Math.max(security.price - 0.01, 0.01)) : null;
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panel.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panel.current) return;
+      const focusable = Array.from(panel.current.querySelectorAll<HTMLElement>("button:not([disabled]), input, select, a[href]"));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      previous?.focus();
+    };
+  }, [onClose]);
+
+  function edit(update: () => void) {
+    update();
+    setStep("edit");
+    setError(null);
+  }
+
+  function review() {
+    setReceipt(null);
+    if (!security) {
+      setError("Choose a symbol from the sample universe.");
+      return;
+    }
+    if (!Number.isInteger(shares) || shares <= 0) {
+      setError("Enter a positive whole number of shares.");
+      return;
+    }
+    setError(null);
+    setStep("review");
+  }
+
+  function confirm() {
+    const result = submitOrder(ticker, side, shares);
+    if (!result.accepted) {
+      setError(result.order.reason);
+      setStep("edit");
+      return;
+    }
+    setReceipt(`${side === "buy" ? "Bought" : "Sold"} ${shares} ${ticker} at ${money(result.order.fillPrice ?? 0)} (sample fill).`);
+    setStep("done");
+  }
+
+  return (
+    <div className="fixed inset-0 z-40" role="presentation">
+      <div className="v-scrim absolute inset-0 bg-[#10261c]/25" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trade-sheet-title"
+        className="v-sheet absolute inset-0 flex flex-col bg-paper md:inset-y-0 md:left-auto md:right-0 md:w-[440px] md:border-l md:border-rule md:shadow-[-20px_0_40px_rgba(16,59,43,0.06)]"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-rule px-6 py-4">
+          <div className="flex items-center gap-3">
+            <h2 id="trade-sheet-title" className="serif text-2xl text-forest">Trade</h2>
+            <span className="v-tag" data-kind="sample">Sample fill</span>
+          </div>
+          <button type="button" className="v-btn quiet small" onClick={onClose} data-autofocus>Close</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {step === "done" ? (
+            <div role="status" className="rounded-2xl border border-pale bg-wash p-5">
+              <span className="v-tag" data-kind="provisional">Filled</span>
+              <p className="serif mt-3 text-xl text-forest">{receipt}</p>
+              <p className="mt-2 text-sm leading-6 text-quiet">The order is on your Orders tab and in Activity. Only this browser&apos;s sample book changed.</p>
+            </div>
+          ) : step === "review" && security ? (
+            <div>
+              <p className="text-[12px] uppercase tracking-[0.08em] text-quiet">Review</p>
+              <p className="serif mt-2 text-3xl text-forest">{side === "buy" ? "Buy" : "Sell"} {shares} {ticker}</p>
+              <dl className="mt-6 divide-y divide-rule border-y border-rule text-sm">
+                <SheetRow label="Symbol" value={`${security.ticker} · ${security.name}`} />
+                <SheetRow label="Shares" value={String(shares)} />
+                <SheetRow label="Sample quote" value={money(security.price)} />
+                <SheetRow label={side === "buy" ? "Estimated debit" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(estimate)} />
+              </dl>
+              <p className="mt-5 text-[13px] leading-6 text-quiet">
+                Execution rule: this sample build fills now at the fixed sample quote {side === "buy" ? "plus" : "minus"} $0.01 per share. The server ledger will queue the order and fill it on the first quote at least 15 minutes later.
+              </p>
+            </div>
+          ) : (
+            <form id="trade-form" onSubmit={(event) => { event.preventDefault(); review(); }} className="space-y-6">
+              <div>
+                <label htmlFor="trade-symbol" className="text-[12px] uppercase tracking-[0.08em] text-quiet">Symbol</label>
+                <select id="trade-symbol" className="v-field mt-2" value={ticker} onChange={(event) => edit(() => setTicker(event.target.value))}>
+                  {securities.map((item) => (
+                    <option key={item.ticker} value={item.ticker}>{item.ticker} · {item.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span id="trade-side" className="text-[12px] uppercase tracking-[0.08em] text-quiet">Side</span>
+                <div className="v-segment mt-2 w-full" role="group" aria-labelledby="trade-side">
+                  {(["buy", "sell"] as const).map((item) => (
+                    <button key={item} type="button" className="flex-1" aria-pressed={side === item} onClick={() => edit(() => setSide(item))}>
+                      {item === "buy" ? "Buy" : "Sell"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="trade-qty" className="text-[12px] uppercase tracking-[0.08em] text-quiet">Shares</label>
+                <input id="trade-qty" className="v-field mono mt-2 text-lg" inputMode="numeric" value={quantity} onChange={(event) => edit(() => setQuantity(event.target.value))} aria-describedby="trade-qty-hint" />
+                <p id="trade-qty-hint" className="mt-1.5 text-[13px] text-quiet">Whole shares only. Long positions only, no margin or options.</p>
+              </div>
+              <dl className="divide-y divide-rule border-y border-rule text-sm">
+                <SheetRow label="Sample quote" value={security ? money(security.price) : "Unavailable"} />
+                <SheetRow label="You own" value={`${owned} sh`} />
+                <SheetRow label="Cash available" value={money(book.cash)} />
+                <SheetRow label={side === "buy" ? "Estimated debit" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(estimate)} />
+              </dl>
+              {error ? (
+                <div role="alert" className="rounded-xl border border-[#efd2cc] bg-loss-soft px-4 py-3 text-sm text-loss">
+                  <span className="font-medium">Order not placed.</span> {error}
+                </div>
+              ) : null}
+            </form>
+          )}
+        </div>
+
+        <div className="flex gap-3 border-t border-rule px-6 py-4">
+          {step === "done" ? (
+            <>
+              <button type="button" className="v-btn flex-1" onClick={onClose}>Done</button>
+              <button type="button" className="v-btn quiet" onClick={() => { setStep("edit"); setReceipt(null); }}>Place another</button>
+            </>
+          ) : step === "review" ? (
+            <>
+              <button type="button" className="v-btn flex-1" onClick={confirm}>Confirm {side}</button>
+              <button type="button" className="v-btn quiet" onClick={() => setStep("edit")}>Back</button>
+            </>
+          ) : (
+            <>
+              <button type="submit" form="trade-form" className="v-btn flex-1">Review order</button>
+              <button type="button" className="v-btn quiet" onClick={onClose}>Cancel</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SheetRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 py-3">
+      <dt className="text-quiet">{label}</dt>
+      <dd className="mono text-right text-forest">{value}</dd>
     </div>
   );
 }

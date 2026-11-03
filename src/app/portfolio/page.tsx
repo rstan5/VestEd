@@ -1,125 +1,253 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Bars, LineChart } from "@/components/chart";
-import { OrderTicket } from "@/components/ticket";
-import { Delta, Metric, Pill, SectionTitle } from "@/components/ui";
-import { dateTime, money, percent, plainPercent } from "@/lib/format";
-import { sectorWeights } from "@/lib/portfolio";
+import { useCallback, useState } from "react";
+import { AllocationBar } from "@/components/chart";
+import { TradeSheet } from "@/components/ticket";
+import { LoadingBlock, Skeleton, StatusNote, Tag } from "@/components/ui";
+import { STARTING_CAPITAL, type Order } from "@/lib/domain";
+import { dateTime, money, percent, plainPercent, shortDate, signedMoney, tone } from "@/lib/format";
+import { sectorWeights, type Book } from "@/lib/portfolio";
 import { usePortfolio } from "@/lib/portfolio-state";
-import { mayaSeries, seasonMeta, securities } from "@/lib/sample-data";
+import { rounds, seasonMeta, securities } from "@/lib/sample-data";
 
-const ranges = [
-  { id: "1M", count: 22 },
-  { id: "Season", count: 80 },
-  { id: "Round", count: 8 },
+type Tab = "holdings" | "orders" | "activity";
+
+const tabs: Array<{ id: Tab; label: string }> = [
+  { id: "holdings", label: "Holdings" },
+  { id: "orders", label: "Orders" },
+  { id: "activity", label: "Activity" },
 ];
 
 export default function PortfolioPage() {
-  const { book, ledger, standing, seasonReturn } = usePortfolio();
-  const [range, setRange] = useState("Season");
-  const [ticket, setTicket] = useState(book.positions[0]?.ticker ?? "SPY");
-  const selected = securities.find((security) => security.ticker === ticket) ?? securities[0];
-  const count = ranges.find((item) => item.id === range)?.count ?? 80;
-  const points = mayaSeries.slice(-count).map((point) => ({ label: point.date, value: point.equity, benchmark: point.benchmark }));
-  if (points.length) points[points.length - 1] = { ...points[points.length - 1], value: book.equity };
-  const sectors = sectorWeights(book);
+  const { ready, book, ledger, seasonReturn } = usePortfolio();
+  const [tab, setTab] = useState<Tab>("holdings");
+  const [sheet, setSheet] = useState<string | null>(null);
+  const closeSheet = useCallback(() => setSheet(null), []);
+  const openSheet = (ticker?: string) => setSheet(ticker ?? book.positions[0]?.ticker ?? securities[0].ticker);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] text-muted">Book</div>
-          <h1 className="serif text-4xl text-forest">Portfolio</h1>
+          <p className="flex items-center gap-2 text-sm text-quiet">
+            {seasonMeta.name} book <Tag kind="sample">Sample quotes</Tag>
+          </p>
+          <h1 className="serif mt-1 text-[40px] leading-none text-forest">Portfolio</h1>
         </div>
-        <Pill>Sample quotes · {seasonMeta.quoteLabel}</Pill>
-      </div>
-      <section className="grid gap-3 md:grid-cols-4">
-        <Metric label="Equity" value={money(book.equity)} detail={<span className="text-muted">Invested {money(book.invested)}</span>} />
-        <Metric label="Cash" value={money(book.cash)} detail={<span className="text-muted">{plainPercent(book.cash / book.equity)} of equity</span>} />
-        <Metric label="Unrealized" value={money(book.unrealized)} detail={<Delta value={book.unrealized} text={percent(book.unrealized / Math.max(book.invested - book.unrealized, 1))} />} />
-        <Metric label="Realized" value={money(book.realized)} detail={<span className="text-muted">Season {percent(seasonReturn)}</span>} />
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_0.7fr]">
-        <div className="card p-4">
-          <SectionTitle title="Performance" action={
-            <div className="flex gap-1">
-              {ranges.map((item) => (
-                <button key={item.id} className={range === item.id ? "btn" : "btn secondary"} type="button" onClick={() => setRange(item.id)}>{item.id}</button>
+        <button type="button" className="v-btn" onClick={() => openSheet()} disabled={!ready}>
+          <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+          Trade
+        </button>
+      </header>
+
+      {!ready ? (
+        <PortfolioLoading />
+      ) : (
+        <>
+          <LedgerSummary book={book} seasonReturn={seasonReturn} />
+
+          <section aria-labelledby="allocation" className="mt-8">
+            <h2 id="allocation" className="sr-only">Allocation</h2>
+            {book.equity > 0 ? (
+              <AllocationBar items={sectorWeights(book).map((sector) => ({ label: sector.sector, weight: sector.weight }))} cash={book.cash / book.equity} />
+            ) : (
+              <StatusNote kind="unavailable" compact title="Allocation unavailable" body="The book has no valuation yet." />
+            )}
+          </section>
+
+          <div className="mt-10 border-b border-rule">
+            <div role="tablist" aria-label="Ledger" className="-mb-px flex gap-6">
+              {tabs.map((item) => (
+                <button
+                  key={item.id}
+                  id={`tab-${item.id}`}
+                  role="tab"
+                  type="button"
+                  aria-selected={tab === item.id}
+                  aria-controls={`panel-${item.id}`}
+                  onClick={() => setTab(item.id)}
+                  className={`border-b-2 pb-3 text-[15px] transition-colors ${tab === item.id ? "border-forest font-medium text-deep" : "border-transparent text-quiet hover:text-forest"}`}
+                >
+                  {item.label}
+                  <span className="mono ml-2 text-[12px] text-quiet">{item.id === "holdings" ? book.positions.length : item.id === "orders" ? ledger.orders.length : ledger.orders.length + 1}</span>
+                </button>
               ))}
             </div>
-          } />
-          <LineChart points={points} />
-          <p className="mt-2 text-xs text-muted">Green line is the sample portfolio path, adjusted to the current demo equity. Sage line is the frozen S&P path.</p>
-        </div>
-        <OrderTicket security={selected} />
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_0.7fr]">
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-4 pt-4">
-            <h2 className="serif text-2xl text-forest">Holdings</h2>
-            <span className="text-xs text-muted">{book.positions.length} positions</span>
           </div>
-          <div className="mt-3 overflow-x-auto">
-            <table>
+
+          <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} className="pt-2">
+            {tab === "holdings" ? <Holdings book={book} onTrade={openSheet} /> : null}
+            {tab === "orders" ? <Orders orders={ledger.orders} onTrade={() => openSheet()} /> : null}
+            {tab === "activity" ? <Activity orders={ledger.orders} /> : null}
+          </div>
+        </>
+      )}
+
+      {sheet ? <TradeSheet key={sheet} initialTicker={sheet} onClose={closeSheet} /> : null}
+    </div>
+  );
+}
+
+function LedgerSummary({ book, seasonReturn }: { book: Book; seasonReturn: number }) {
+  const items = [
+    { label: "Equity", value: money(book.equity), detail: <span className={tone(seasonReturn)}>{percent(seasonReturn, 2)} season</span> },
+    { label: "Cash", value: money(book.cash), detail: <span className="text-quiet">{book.equity ? plainPercent(book.cash / book.equity) : "Unavailable"} of equity</span> },
+    { label: "Invested", value: money(book.invested), detail: <span className="text-quiet">{book.positions.length} positions</span> },
+    { label: "Unrealized", value: signedMoney(book.unrealized), detail: <span className="text-quiet">Open positions</span> },
+    { label: "Realized", value: signedMoney(book.realized), detail: <span className="text-quiet">Closed this season</span> },
+  ];
+  return (
+    <dl className="mt-8 grid grid-cols-2 gap-y-6 border-y border-rule py-5 md:grid-cols-5 md:divide-x md:divide-rule">
+      {items.map((item) => (
+        <div key={item.label} className="md:px-5 md:first:pl-0">
+          <dt className="text-[12px] text-quiet">{item.label}</dt>
+          <dd className="mono mt-1 text-[17px] text-deep">{item.value}</dd>
+          <dd className="mt-0.5 text-[12px]">{item.detail}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Holdings({ book, onTrade }: { book: Book; onTrade: (ticker: string) => void }) {
+  if (book.positions.length === 0) {
+    return (
+      <div className="pt-6">
+        <StatusNote kind="empty" title="No holdings yet" body="Your book is all cash. Open the trade sheet to buy from the sample universe." action={<button type="button" className="v-btn" onClick={() => onTrade(securities[0].ticker)}>Trade</button>} />
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="v-table">
+        <thead>
+          <tr>
+            <th className="text-left">Symbol</th>
+            <th className="num hidden sm:table-cell">Shares</th>
+            <th className="num hidden md:table-cell">Avg cost</th>
+            <th className="num hidden md:table-cell">Price</th>
+            <th className="num">Value</th>
+            <th className="num">Return</th>
+            <th className="num hidden lg:table-cell">Weight</th>
+            <th><span className="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {book.positions.map((position) => (
+            <tr key={position.ticker}>
+              <td>
+                <Link href={`/markets/${position.ticker}`} className="mono text-[15px] text-deep hover:underline">{position.ticker}</Link>
+                <div className="max-w-[160px] truncate text-[12px] text-quiet md:max-w-none">{position.name}</div>
+              </td>
+              <td className="num mono hidden sm:table-cell">{position.quantity}</td>
+              <td className="num mono hidden md:table-cell">{money(position.averageCost)}</td>
+              <td className="num mono hidden md:table-cell">{money(position.price)}</td>
+              <td className="num mono">{money(position.marketValue, 0)}</td>
+              <td className={`num mono ${tone(position.returnPct)}`}>{percent(position.returnPct)}</td>
+              <td className="num mono hidden lg:table-cell">{plainPercent(position.weight)}</td>
+              <td className="text-right">
+                <button type="button" className="v-btn quiet small" onClick={() => onTrade(position.ticker)} aria-label={`Trade ${position.ticker}`}>Trade</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Orders({ orders, onTrade }: { orders: Order[]; onTrade: () => void }) {
+  return (
+    <div className="space-y-10 pt-6">
+      <section aria-labelledby="open-orders">
+        <h2 id="open-orders" className="text-sm font-medium text-forest">Open orders</h2>
+        <div className="mt-3">
+          <StatusNote
+            kind="empty"
+            compact
+            title="No open orders"
+            body="This sample build fills orders right away, so nothing waits here. The server ledger will hold queued orders here until they fill, expire, or you cancel them."
+          />
+        </div>
+      </section>
+      <section aria-labelledby="order-history">
+        <h2 id="order-history" className="text-sm font-medium text-forest">History</h2>
+        {orders.length === 0 ? (
+          <div className="mt-3">
+            <StatusNote kind="empty" compact title="No orders this season" body="Orders you place appear here, including rejected ones." action={<button type="button" className="v-btn quiet small" onClick={onTrade}>Trade</button>} />
+          </div>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="v-table">
               <thead>
                 <tr>
-                  <th>Ticker</th><th>Company</th><th className="num">Qty</th><th className="num">Avg cost</th><th className="num">Price</th><th className="num">Value</th><th className="num">Return</th><th className="num">Weight</th>
+                  <th className="text-left">Submitted</th>
+                  <th className="text-left">Order</th>
+                  <th className="num">Fill</th>
+                  <th className="text-left">Status</th>
+                  <th className="hidden text-left lg:table-cell">Note</th>
                 </tr>
               </thead>
               <tbody>
-                {book.positions.map((position) => (
-                  <tr key={position.ticker}>
-                    <td><button className="mono text-primary" type="button" onClick={() => setTicket(position.ticker)}>{position.ticker}</button></td>
-                    <td><Link href={`/markets/${position.ticker}`}>{position.name}</Link></td>
-                    <td className="num mono">{position.quantity}</td>
-                    <td className="num mono">{money(position.averageCost)}</td>
-                    <td className="num mono">{money(position.price)}</td>
-                    <td className="num mono">{money(position.marketValue)}</td>
-                    <td className={`num ${position.returnPct >= 0 ? "up" : "down"}`}>{percent(position.returnPct)}</td>
-                    <td className="num">{plainPercent(position.weight)}</td>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td className="mono text-[13px] text-quiet">{dateTime(order.submittedAt)}</td>
+                    <td><span className="capitalize">{order.side}</span> <span className="mono">{order.quantity} {order.ticker}</span></td>
+                    <td className="num mono">{order.fillPrice === null ? <span className="text-quiet">Not filled</span> : money(order.fillPrice)}</td>
+                    <td>{order.status === "filled" ? <Tag kind="provisional">Filled</Tag> : <Tag kind="error">Rejected</Tag>}</td>
+                    <td className="hidden max-w-[320px] text-[13px] leading-5 text-quiet lg:table-cell">{order.reason}</td>
                   </tr>
                 ))}
-                {book.positions.length === 0 ? <tr><td colSpan={8} className="text-muted">No holdings. The order ticket can buy from the sample universe.</td></tr> : null}
               </tbody>
             </table>
           </div>
-        </div>
-        <div className="card p-4">
-          <SectionTitle title="Allocation" />
-          <Bars items={sectors.map((sector) => ({ label: sector.sector, value: sector.weight }))} />
-          <p className="mt-4 text-sm leading-6 text-muted">
-            Diversification {Math.round(standing.diversification * 100)}. Drawdown {standing.drawdown === null ? "insufficient data" : percent(standing.drawdown)}. Volatility {standing.riskAdjusted === null ? "needs 20 observations before it is official" : "available as an estimate"}.
-          </p>
-        </div>
-      </section>
-      <section className="card overflow-hidden">
-        <div className="px-4 pt-4">
-          <h2 className="serif text-2xl text-forest">Orders</h2>
-          <p className="text-sm text-muted">Rejected orders stay on the blotter and do not change cash.</p>
-        </div>
-        <div className="mt-3 overflow-x-auto">
-          <table>
-            <thead>
-              <tr><th>Time</th><th>Side</th><th>Ticker</th><th className="num">Qty</th><th className="num">Fill</th><th>Status</th><th>Rule</th></tr>
-            </thead>
-            <tbody>
-              {ledger.orders.map((order) => (
-                <tr key={order.id}>
-                  <td className="mono text-xs">{dateTime(order.submittedAt)}</td>
-                  <td className="capitalize">{order.side}</td>
-                  <td className="mono">{order.ticker}</td>
-                  <td className="num">{order.quantity}</td>
-                  <td className="num mono">{order.fillPrice === null ? "—" : money(order.fillPrice)}</td>
-                  <td className={order.status === "filled" ? "up" : "down"}>{order.status}</td>
-                  <td className="max-w-[280px] text-xs text-muted">{order.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        )}
       </section>
     </div>
+  );
+}
+
+function Activity({ orders }: { orders: Order[] }) {
+  const seasonStart = rounds[0]?.start;
+  return (
+    <ol className="divide-y divide-rule pt-2">
+      {orders.map((order) => (
+        <li key={order.id} className="grid grid-cols-[72px_1fr] gap-4 py-4 md:grid-cols-[120px_1fr_auto]">
+          <span className="mono pt-0.5 text-[13px] text-quiet">{shortDate(order.submittedAt)}</span>
+          <div>
+            <p className="text-[15px] text-forest">
+              {order.status === "filled"
+                ? `${order.side === "buy" ? "Bought" : "Sold"} ${order.quantity} ${order.ticker} at ${money(order.fillPrice ?? 0)}`
+                : `${order.side === "buy" ? "Buy" : "Sell"} ${order.quantity} ${order.ticker} rejected`}
+            </p>
+            <p className="mt-0.5 text-[13px] text-quiet">{order.status === "filled" ? (order.side === "buy" ? "Cash debited, shares added." : "Shares removed, cash credited.") : `No cash or shares moved. ${order.reason}`}</p>
+          </div>
+          <span className="col-start-2 md:col-start-auto">{order.status === "filled" ? <Tag kind="sample">Sample fill</Tag> : <Tag kind="error">Rejected</Tag>}</span>
+        </li>
+      ))}
+      <li className="grid grid-cols-[72px_1fr] gap-4 py-4 md:grid-cols-[120px_1fr_auto]">
+        <span className="mono pt-0.5 text-[13px] text-quiet">{seasonStart ? shortDate(seasonStart) : "Unavailable"}</span>
+        <div>
+          <p className="text-[15px] text-forest">Season opened with {money(STARTING_CAPITAL)} in virtual cash</p>
+          <p className="mt-0.5 text-[13px] text-quiet">Earlier sample fills that built this book are not itemized in this build.</p>
+        </div>
+        <span className="col-start-2 md:col-start-auto"><Tag kind="sample">Sample</Tag></span>
+      </li>
+    </ol>
+  );
+}
+
+function PortfolioLoading() {
+  return (
+    <LoadingBlock label="Loading your book">
+      <div className="mt-8 grid grid-cols-2 gap-6 border-y border-rule py-5 md:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-10 w-full" />)}
+      </div>
+      <Skeleton className="mt-8 h-2.5 w-full" />
+      <div className="mt-12 space-y-3">
+        {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-11 w-full" />)}
+      </div>
+    </LoadingBlock>
   );
 }
