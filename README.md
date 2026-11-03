@@ -13,7 +13,7 @@ npx next dev --hostname 127.0.0.1 --port 3100
 
 `npm run dev` runs the same command with Turbopack. The app binds to `127.0.0.1:3100` only. Never start it with `0.0.0.0` or on port 3000.
 
-Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Home, Portfolio, onboarding, account pages, and student profiles need a signed-in student, so start local Supabase first (below). The book is still the shared sample book: trades persist in this browser under `vested.demo.ledger.v1`, and **Reset sample book** in the account menu restores it.
+Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Home, Portfolio, onboarding, account pages, and student profiles need a signed-in student, so start local Supabase first (below). A signed-in student's Home and Portfolio book is their own server ledger, keyed to their profile id; signed-out visitors see the labeled sample demo, whose trades persist in this browser under `vested.demo.ledger.v1` (**Reset sample book** in the account menu restores it).
 
 ```bash
 npm test
@@ -81,6 +81,17 @@ npm run campus:review -- affiliation <affiliation-id> verified|rejected
 
 The sample club and university directories (`/clubs`, `/universities`) and the standings boards still use sample data.
 
+## Ledger
+
+The server ledger lives in `supabase/migrations/20261103140000_ledger.sql`. Season registration credits exactly $100000.00 once per season and rounds never reset the book. Orders are whole-share, long-only stock and ETF orders, placed through `POST /api/orders` with instrument, side, quantity, and an idempotency key only; a client-supplied price, clock, or account is rejected. Replaying a key returns the original order. Buys reserve the reference quote times shares plus a five percent collar and the $0.01-per-share simulation cost; a fill that would debit more than the reserve is rejected and the reserve released. Eligibility is the later of acceptance plus 15 minutes and the next regular-session open, and DAY orders expire at the New York close of the session they are eligible to work. Students read only their own book.
+
+```bash
+npx tsx scripts/run-jobs.ts --store postgres   # one fill pass over the Postgres ledger
+JOBS_NOW=2026-11-03T15:00:00Z npx tsx scripts/run-jobs.ts --store postgres   # override the job clock
+```
+
+`src/lib/ledger/ledger.integration.test.ts` runs the lifecycle against local Supabase when it is up, and `supabase/tests/ledger_rls.test.sql` covers the permissions in pgTAP.
+
 ## Environment
 
 `.env.example` lists every variable with an empty value. Copy it to `.env.local`, which git ignores. Provider keys (`MARKET_DATA_API_KEY`, `AI_API_KEY`) stay empty until licensed credentials exist; with no key, market data and AI replies are unavailable or labeled samples. `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never commit it and never give it a `NEXT_PUBLIC_` prefix.
@@ -103,7 +114,7 @@ npm run jobs:once                          # one pass over the labeled sample fi
 npx tsx scripts/run-jobs.ts --every 60     # local timer; Ctrl-C stops it
 ```
 
-Only the in-memory sample store exists so far. The Postgres store comes with the server ledger. The session clock knows regular New York hours and DST. Holidays and early closes must be passed in.
+The fixture store is in-memory and labeled sample. `--store postgres` runs the fill pass against the local Postgres ledger with the service role from `.env.local`; valuation and round-close stores are not Postgres-backed yet. The session clock knows regular New York hours and DST; the Postgres store reads holidays and early closes from `market_calendar`.
 ## What works
 
 - Dashboard, portfolio, markets, security pages, competition boards, investor and club profiles, universities, research, and the professor chat.
@@ -113,7 +124,7 @@ Only the in-memory sample store exists so far. The Postgres store comes with the
 
 ## What is mocked
 
-- Quotes, charts on security pages, news, and standings for everyone except Maya's provisional book.
+- Quotes, charts on security pages, news, and standings. Quotes that value the ledger are stored and labeled sample.
 - The sample club and university directories under `/clubs` and `/universities`. Real student clubs are under `/campus`.
 - AI Professor replies. They are deterministic templates tagged Demonstration.
 - Prior-year pages show archived champions only.
@@ -122,9 +133,8 @@ Only the in-memory sample store exists so far. The Postgres store comes with the
 
 - Email-ownership checks for university addresses. A reviewer decides verification instead.
 - Club and university standings from real memberships.
-- Server-side holdings: `published_holdings_source` returns no rows until the server ledger stores positions.
-- A market-data vendor, corporate actions, and a real trading calendar.
-- Server-authoritative orders and immutable round-close jobs.
+- A market-data vendor, corporate actions, and a real trading calendar beyond the stored 2026-2027 calendar.
+- Valuation and round-close jobs against Postgres.
 - A model API. Leave `AI_API_KEY` empty. See `.env.example`.
 
 Read `PRODUCT_SPEC.md` for scoring rules and `ARCHITECTURE.md` for the production boundary. The next milestone is the database and a server ledger, not a vendor key in the browser.

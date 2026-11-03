@@ -1,10 +1,13 @@
 "use client";
 
+import Decimal from "decimal.js";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Security } from "@/lib/domain";
-import { money } from "@/lib/format";
+import { dateTime, money } from "@/lib/format";
+import { buyReserve, SIMULATION_COST } from "@/lib/ledger/book";
+import type { OrderPayload } from "@/lib/ledger/types";
 import { usePortfolio } from "@/lib/portfolio-state";
-import { securities } from "@/lib/sample-data";
 
 export function OrderTicket({ security }: { security: Security }) {
   const { book, submitOrder } = usePortfolio();
@@ -91,19 +94,38 @@ function Row({ label, value }: { label: string; value: string }) {
 
 type SheetStep = "edit" | "review" | "done";
 
+function newOrderKey(): string {
+  return `web-${crypto.randomUUID()}`;
+}
+
+/** Places an order on the signed-in student's server book. The fill never comes from this screen. */
 export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; onClose: () => void }) {
-  const { book, submitOrder } = usePortfolio();
+  const { student, placeServerOrder } = usePortfolio();
   const [ticker, setTicker] = useState(initialTicker);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [quantity, setQuantity] = useState("1");
   const [step, setStep] = useState<SheetStep>("edit");
   const [error, setError] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(newOrderKey);
+  const [receipt, setReceipt] = useState<OrderPayload | null>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const security = securities.find((item) => item.ticker === ticker);
+
+  const ready = student.status === "ready" ? student : null;
+  const instrument = ready?.book.instruments.find((item) => item.id === ticker) ?? ready?.book.instruments[0] ?? null;
+  const activeTicker = instrument?.id ?? ticker;
+  const quote = ready?.book.quotes[activeTicker] ?? null;
   const shares = Number(quantity);
-  const owned = book.positions.find((position) => position.ticker === ticker)?.quantity ?? 0;
-  const estimate = security && Number.isFinite(shares) ? shares * (side === "buy" ? security.price + 0.01 : Math.max(security.price - 0.01, 0.01)) : null;
+  const held = ready?.valuation.positions.find((position) => position.instrumentId === activeTicker) ?? null;
+  const owned = held ? Number(held.quantity) : 0;
+  const heldShares = held ? Number(held.sharesReserved) : 0;
+  const availableCash = ready ? Number(ready.valuation.availableCash) : null;
+
+  const estimate = (() => {
+    if (!ready || !quote || !Number.isInteger(shares) || shares <= 0) return null;
+    if (side === "buy") return buyReserve(shares, quote.price);
+    return new Decimal(shares).times(quote.price).minus(new Decimal(shares).times(SIMULATION_COST)).toFixed(2);
+  })();
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -143,27 +165,34 @@ export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; 
   }
 
   function review() {
-    setReceipt(null);
-    if (!security) {
-      setError("Choose a symbol from the sample universe.");
+    setError(null);
+    if (!instrument) {
+      setError("No tradable stocks or ETFs are listed right now.");
       return;
     }
     if (!Number.isInteger(shares) || shares <= 0) {
       setError("Enter a positive whole number of shares.");
       return;
     }
-    setError(null);
+    if (side === "buy" && !quote) {
+      setError(`No stored quote for ${activeTicker}, so a buy cannot be reserved.`);
+      return;
+    }
+    setIdempotencyKey(newOrderKey());
     setStep("review");
   }
 
-  function confirm() {
-    const result = submitOrder(ticker, side, shares);
-    if (!result.accepted) {
-      setError(result.order.reason);
+  async function confirm() {
+    setSubmitting(true);
+    setError(null);
+    const result = await placeServerOrder({ instrument: activeTicker, side, quantity: shares, idempotencyKey });
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.message);
       setStep("edit");
       return;
     }
-    setReceipt(`${side === "buy" ? "Bought" : "Sold"} ${shares} ${ticker} at ${money(result.order.fillPrice ?? 0)} (sample fill).`);
+    setReceipt(result.order);
     setStep("done");
   }
 
@@ -180,39 +209,61 @@ export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; 
         <div className="flex items-center justify-between gap-3 border-b border-rule px-6 py-4">
           <div className="flex items-center gap-3">
             <h2 id="trade-sheet-title" className="serif text-2xl text-forest">Trade</h2>
-            <span className="v-tag" data-kind="sample">Sample fill</span>
+            <span className="v-tag" data-kind="sample">Sample quotes</span>
           </div>
           <button type="button" className="v-btn quiet small" onClick={onClose} data-autofocus>Close</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          {step === "done" ? (
+          {!ready ? (
             <div role="status" className="rounded-2xl border border-pale bg-wash p-5">
-              <span className="v-tag" data-kind="provisional">Filled</span>
-              <p className="serif mt-3 text-xl text-forest">{receipt}</p>
-              <p className="mt-2 text-sm leading-6 text-quiet">The order is on your Orders tab and in Activity. Only this browser&apos;s sample book changed.</p>
+              {student.status === "loading" ? (
+                <p className="text-sm leading-6 text-quiet">Loading your book…</p>
+              ) : student.status === "unavailable" ? (
+                <>
+                  <p className="serif text-xl text-forest">Your book is unavailable</p>
+                  <p className="mt-2 text-sm leading-6 text-quiet">{student.message}</p>
+                </>
+              ) : (
+                <>
+                  <p className="serif text-xl text-forest">Sign in to trade</p>
+                  <p className="mt-2 text-sm leading-6 text-quiet">Orders are placed on your own server book, not this browser&apos;s sample demo.</p>
+                  <Link href="/login" className="v-btn mt-4 w-full" onClick={onClose}>Sign in</Link>
+                </>
+              )}
             </div>
-          ) : step === "review" && security ? (
+          ) : step === "done" && receipt ? (
+            <div role="status" className="rounded-2xl border border-pale bg-wash p-5">
+              <span className="v-tag" data-kind="provisional">{receipt.replayed ? "Already placed" : "Accepted"}</span>
+              <p className="serif mt-3 text-xl text-forest capitalize">{receipt.side} {receipt.quantity} {receipt.instrument_id}</p>
+              <p className="mt-2 text-sm leading-6 text-quiet">
+                {receipt.replayed
+                  ? "This exact order was already accepted under the same key, so nothing was placed twice."
+                  : `Queued until ${dateTime(receipt.eligible_at)}. It fills on the first stored sample quote at or after eligibility and expires at ${dateTime(receipt.expires_at)} if none arrives. Cancel it from the Orders tab before it fills.`}
+              </p>
+            </div>
+          ) : step === "review" && instrument ? (
             <div>
               <p className="text-[12px] uppercase tracking-[0.08em] text-quiet">Review</p>
-              <p className="serif mt-2 text-3xl text-forest">{side === "buy" ? "Buy" : "Sell"} {shares} {ticker}</p>
+              <p className="serif mt-2 text-3xl text-forest">{side === "buy" ? "Buy" : "Sell"} {shares} {activeTicker}</p>
               <dl className="mt-6 divide-y divide-rule border-y border-rule text-sm">
-                <SheetRow label="Symbol" value={`${security.ticker} · ${security.name}`} />
+                <SheetRow label="Symbol" value={`${instrument.id} · ${instrument.name}`} />
                 <SheetRow label="Shares" value={String(shares)} />
-                <SheetRow label="Sample quote" value={money(security.price)} />
-                <SheetRow label={side === "buy" ? "Estimated debit" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(estimate)} />
+                <SheetRow label="Stored quote (sample)" value={quote ? `${money(Number(quote.price))} · ${dateTime(quote.asOf)}` : "Unavailable"} />
+                <SheetRow label={side === "buy" ? "Estimated reserve" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(Number(estimate))} />
               </dl>
               <p className="mt-5 text-[13px] leading-6 text-quiet">
-                Execution rule: this sample build fills now at the fixed sample quote {side === "buy" ? "plus" : "minus"} $0.01 per share. The server ledger will queue the order and fill it on the first quote at least 15 minutes later.
+                Execution rule: the server ledger {side === "buy" ? "reserves the estimate plus a five percent collar" : "reserves the shares"} now and fills on the first stored quote at or after eligibility
+                (acceptance plus 15 minutes, never before the next regular open). Simulation cost is $0.01 per share. The stored quote, not this estimate, sets the fill.
               </p>
             </div>
           ) : (
             <form id="trade-form" onSubmit={(event) => { event.preventDefault(); review(); }} className="space-y-6">
               <div>
                 <label htmlFor="trade-symbol" className="text-[12px] uppercase tracking-[0.08em] text-quiet">Symbol</label>
-                <select id="trade-symbol" className="v-field mt-2" value={ticker} onChange={(event) => edit(() => setTicker(event.target.value))}>
-                  {securities.map((item) => (
-                    <option key={item.ticker} value={item.ticker}>{item.ticker} · {item.name}</option>
+                <select id="trade-symbol" className="v-field mt-2" value={activeTicker} onChange={(event) => edit(() => setTicker(event.target.value))}>
+                  {ready.book.instruments.map((item) => (
+                    <option key={item.id} value={item.id}>{item.id} · {item.name}</option>
                   ))}
                 </select>
               </div>
@@ -232,10 +283,10 @@ export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; 
                 <p id="trade-qty-hint" className="mt-1.5 text-[13px] text-quiet">Whole shares only. Long positions only, no margin or options.</p>
               </div>
               <dl className="divide-y divide-rule border-y border-rule text-sm">
-                <SheetRow label="Sample quote" value={security ? money(security.price) : "Unavailable"} />
-                <SheetRow label="You own" value={`${owned} sh`} />
-                <SheetRow label="Cash available" value={money(book.cash)} />
-                <SheetRow label={side === "buy" ? "Estimated debit" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(estimate)} />
+                <SheetRow label="Stored quote (sample)" value={quote ? money(Number(quote.price)) : "Unavailable"} />
+                <SheetRow label="You own" value={`${owned} sh${heldShares > 0 ? ` (${heldShares} reserved)` : ""}`} />
+                <SheetRow label="Cash available" value={availableCash === null ? "Unavailable" : money(availableCash)} />
+                <SheetRow label={side === "buy" ? "Estimated reserve" : "Estimated credit"} value={estimate === null ? "Unavailable" : money(Number(estimate))} />
               </dl>
               {error ? (
                 <div role="alert" className="rounded-xl border border-[#efd2cc] bg-loss-soft px-4 py-3 text-sm text-loss">
@@ -247,15 +298,17 @@ export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; 
         </div>
 
         <div className="flex gap-3 border-t border-rule px-6 py-4">
-          {step === "done" ? (
+          {!ready ? (
+            <button type="button" className="v-btn flex-1" onClick={onClose}>Close</button>
+          ) : step === "done" ? (
             <>
               <button type="button" className="v-btn flex-1" onClick={onClose}>Done</button>
-              <button type="button" className="v-btn quiet" onClick={() => { setStep("edit"); setReceipt(null); }}>Place another</button>
+              <button type="button" className="v-btn quiet" onClick={() => { setReceipt(null); setStep("edit"); }}>Place another</button>
             </>
           ) : step === "review" ? (
             <>
-              <button type="button" className="v-btn flex-1" onClick={confirm}>Confirm {side}</button>
-              <button type="button" className="v-btn quiet" onClick={() => setStep("edit")}>Back</button>
+              <button type="button" className="v-btn flex-1" disabled={submitting} onClick={() => void confirm()}>{submitting ? "Placing…" : `Confirm ${side}`}</button>
+              <button type="button" className="v-btn quiet" disabled={submitting} onClick={() => setStep("edit")}>Back</button>
             </>
           ) : (
             <>

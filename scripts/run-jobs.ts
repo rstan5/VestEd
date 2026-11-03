@@ -1,20 +1,66 @@
+import { createClient } from "@supabase/supabase-js";
 import { newYorkSessionClock } from "../src/lib/jobs/clock";
 import { createFixtureStore } from "../src/lib/jobs/fixture-store";
 import { SAMPLE_JOB_NOW, sampleJobSeed } from "../src/lib/jobs/fixtures";
 import { runJobsOnce, startJobTimer } from "../src/lib/jobs/run";
+import { runLedgerFills } from "../src/lib/ledger/job-store";
+import type { Database } from "../src/lib/supabase/database";
 
-// Only the labeled sample store exists until the database store lands; it never reaches a vendor.
-const store = createFixtureStore(sampleJobSeed());
-const clock = newYorkSessionClock();
-const context = () => ({ store, clock, now: new Date(process.env.JOBS_NOW ?? SAMPLE_JOB_NOW) });
+try {
+  process.loadEnvFile(".env.local");
+} catch {}
 
+const storeFlag = process.argv.indexOf("--store");
+const storeName = storeFlag === -1 ? "fixture" : (process.argv[storeFlag + 1] ?? "fixture");
 const everyFlag = process.argv.indexOf("--every");
 const seconds = everyFlag === -1 ? null : Number(process.argv[everyFlag + 1]);
 
-if (seconds === null) {
-  runJobsOnce(context()).then((result) => console.log(JSON.stringify({ store: store.label, ...result }, null, 2)));
-} else {
-  if (!Number.isFinite(seconds) || seconds <= 0) throw new Error("--every needs a positive number of seconds");
+if (seconds !== null && (!Number.isFinite(seconds) || seconds <= 0)) {
+  throw new Error("--every needs a positive number of seconds");
+}
+
+async function main() {
+  if (storeName === "postgres") {
+    // Fill pass over the Postgres ledger. Valuation and round-close stores land with their own features.
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    if (!url || !serviceKey) {
+      throw new Error("--store postgres needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local");
+    }
+    const client = createClient<Database>(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const now = () => (process.env.JOBS_NOW ? new Date(process.env.JOBS_NOW) : new Date());
+    const pass = async () => {
+      const result = await runLedgerFills(client, now());
+      console.log(JSON.stringify({ store: "postgres", ...result }, null, 2));
+    };
+    if (seconds === null) {
+      await pass();
+      return;
+    }
+    const handle = setInterval(() => void pass().catch((error) => console.error(error)), seconds * 1000);
+    await pass();
+    const shutdown = () => {
+      clearInterval(handle);
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    return;
+  }
+  if (storeName !== "fixture") throw new Error(`Unknown store "${storeName}". Use fixture or postgres.`);
+
+  // The labeled sample store never reaches a vendor.
+  const store = createFixtureStore(sampleJobSeed());
+  const clock = newYorkSessionClock();
+  const context = () => ({ store, clock, now: new Date(process.env.JOBS_NOW ?? SAMPLE_JOB_NOW) });
+
+  if (seconds === null) {
+    const result = await runJobsOnce(context());
+    console.log(JSON.stringify({ store: store.label, ...result }, null, 2));
+    return;
+  }
   const timer = startJobTimer(context, seconds * 1000, {
     onResult: (result) => console.log(JSON.stringify({ store: store.label, ...result })),
   });
@@ -22,3 +68,8 @@ if (seconds === null) {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
+
+void main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

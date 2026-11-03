@@ -86,6 +86,76 @@ export type PublicCampusRow = {
 };
 export type AdminReviewRow = { kind: string; item_id: string; club_id: string | null; title: string; detail: string; submitted_at: string };
 
+// Ledger rows. Numeric columns are read with a ::text cast so money stays a decimal string.
+export type SeasonRow = { id: string; name: string; starts_at: string; ends_at: string; starting_capital: string };
+export type RoundRow = { id: string; season_id: string; number: number; name: string; starts_at: string; ends_at: string };
+export type InstrumentRow = { id: string; name: string; kind: string; sector: string | null; tradable: boolean };
+export type QuoteRow = { id: string; instrument_id: string; price: string; as_of: string; source: "sample" | "licensed"; recorded_at: string };
+export type MarketCalendarRow = { session_date: string; closed: boolean; close_time: string | null; note: string };
+export type RegistrationRow = { id: string; season_id: string; student_id: string; starting_capital: string; cash: string; registered_at: string };
+export type OrderRow = {
+  id: string;
+  registration_id: string;
+  student_id: string;
+  instrument_id: string;
+  side: "buy" | "sell";
+  quantity: number;
+  time_in_force: "day";
+  idempotency_key: string;
+  status: "accepted" | "filled" | "rejected" | "cancelled" | "expired";
+  accepted_at: string;
+  eligible_at: string;
+  expires_at: string;
+  reference_quote_id: string | null;
+  reference_price: string | null;
+  closed_at: string | null;
+  reason: string | null;
+};
+export type OrderReservationRow = {
+  order_id: string;
+  registration_id: string;
+  student_id: string;
+  kind: "cash" | "shares";
+  instrument_id: string;
+  amount: string;
+  held_at: string;
+  released_at: string | null;
+  release_reason: string | null;
+};
+export type ExecutionRow = {
+  id: string;
+  order_id: string;
+  registration_id: string;
+  student_id: string;
+  instrument_id: string;
+  side: "buy" | "sell";
+  quantity: number;
+  quote_id: string;
+  price: string;
+  gross: string;
+  simulation_cost: string;
+  net_cash: string;
+  realized: string | null;
+  executed_at: string;
+  recorded_at: string;
+};
+export type CashLedgerRow = {
+  id: number;
+  registration_id: string;
+  student_id: string;
+  kind: "opening" | "trade" | "simulation_cost";
+  amount: string;
+  order_id: string | null;
+  execution_id: string | null;
+  memo: string;
+  created_at: string;
+};
+export type PositionRow = { registration_id: string; student_id: string; instrument_id: string; quantity: string; cost_basis: string; updated_at: string };
+export type LatestQuoteRow = { instrument_id: string; quote_id: string; price: string; as_of: string; source: "sample" | "licensed" };
+export type OrderWindowRow = { eligible_at: string; expires_at: string };
+
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
 type ProfileUpdate = Partial<Pick<ProfileRow, "display_name" | "class_year" | "concentration" | "holdings_public" | "onboarded_at">>;
 
 type ReadOnlyTable<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
@@ -102,6 +172,17 @@ export type Database = {
       universities: ReadOnlyTable<UniversityRow>;
       university_domains: ReadOnlyTable<UniversityDomainRow>;
       clubs: ReadOnlyTable<ClubRow>;
+      seasons: ReadOnlyTable<SeasonRow>;
+      rounds: ReadOnlyTable<RoundRow>;
+      instruments: ReadOnlyTable<InstrumentRow>;
+      quotes: ReadOnlyTable<QuoteRow>;
+      market_calendar: ReadOnlyTable<MarketCalendarRow>;
+      registrations: ReadOnlyTable<RegistrationRow>;
+      orders: ReadOnlyTable<OrderRow>;
+      order_reservations: ReadOnlyTable<OrderReservationRow>;
+      executions: ReadOnlyTable<ExecutionRow>;
+      cash_ledger: ReadOnlyTable<CashLedgerRow>;
+      positions: ReadOnlyTable<PositionRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -127,6 +208,21 @@ export type Database = {
       club_directory: { Args: { p_club?: string | null }; Returns: ClubDirectoryRow[] };
       club_roster: { Args: { p_club: string }; Returns: ClubRosterRow[] };
       club_applications: { Args: { p_club: string }; Returns: ClubApplicationRow[] };
+      register_for_season: { Args: { p_season?: string | null }; Returns: Json };
+      place_order: { Args: { p_instrument: string; p_side: string; p_quantity: number; p_idempotency_key: string }; Returns: Json };
+      cancel_order: { Args: { p_order: string }; Returns: Json };
+      latest_quotes: { Args: { p_at?: string }; Returns: LatestQuoteRow[] };
+      ledger_order_window: { Args: { p_accepted_at: string }; Returns: OrderWindowRow[] };
+      ledger_buy_reserve: { Args: { p_quantity: number; p_price: number | string }; Returns: number };
+      ledger_create_season: { Args: { p_id: string; p_name: string; p_starts_at: string; p_rounds: number }; Returns: string };
+      ledger_register: { Args: { p_student: string; p_season: string | null; p_at: string }; Returns: string };
+      ledger_accept_order: {
+        Args: { p_student: string; p_instrument: string; p_side: string; p_quantity: number; p_idempotency_key: string; p_at: string };
+        Returns: Json;
+      };
+      ledger_cancel_order: { Args: { p_student: string; p_order: string; p_at: string }; Returns: Json };
+      ledger_fill_order: { Args: { p_order: string; p_quote: string; p_at: string }; Returns: Json };
+      ledger_expire_order: { Args: { p_order: string; p_at: string }; Returns: boolean };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

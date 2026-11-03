@@ -9,12 +9,13 @@ import { firstName as firstNameOf } from "@/lib/account/types";
 import { affiliationShort, roleLabel } from "@/lib/campus/types";
 import { CASH_DRAG_THRESHOLD } from "@/lib/domain";
 import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/format";
+import { studentDomainBook } from "@/lib/ledger/client";
 import type { Book } from "@/lib/portfolio";
 import { usePortfolio } from "@/lib/portfolio-state";
 import { currentRound, headlines, mayaSeries, seasonMeta } from "@/lib/sample-data";
 
 export default function HomePage() {
-  const { ready, book, standings, standing, seasonReturn } = usePortfolio();
+  const { standings, standing, student } = usePortfolio();
   const accountState = useAccountState();
   const round = currentRound();
 
@@ -28,15 +29,30 @@ export default function HomePage() {
       />
     );
   }
-  if (!ready) return <HomeLoading />;
+  if (student.status === "loading" || student.status === "signed-out") return <HomeLoading />;
+  if (student.status === "unavailable") {
+    return (
+      <StatusNote
+        kind="error"
+        title="Your book could not be loaded"
+        body={student.message}
+        action={<Link href="/portfolio" className="v-btn quiet small">Open Portfolio</Link>}
+      />
+    );
+  }
 
+  // The book below is the signed-in student's own ledger, keyed to their profile id.
+  const book = studentDomainBook(student.valuation);
+  const seasonReturn = student.valuation.seasonReturn === null ? null : Number(student.valuation.seasonReturn);
   const account = accountState.account;
   const { affiliation, club } = account.campus;
   const firstName = firstNameOf(account.displayName);
   const official = standings.find((row) => row.investorId === standing.investorId);
-  const action = account.onboarded
-    ? nextAction(book, round.name, shortDate(round.end))
-    : { title: "Finish setting up", body: "Add optional profile basics and choose how to continue. No club is needed.", href: "/onboarding", label: "Continue setup" };
+  const action = !account.onboarded
+    ? { title: "Finish setting up", body: "Add optional profile basics and choose how to continue. No club is needed.", href: "/onboarding", label: "Continue setup" }
+    : book
+      ? nextAction(book, round.name, shortDate(round.end))
+      : { title: "Valuation unavailable", body: "A holding has no stored quote, so your book cannot be valued right now.", href: "/portfolio", label: "Open Portfolio" };
   const points = mayaSeries.map((point) => ({ label: point.date, value: point.equity }));
   const holdingNews = headlines.find((item) => item.relevance === "holding");
 
@@ -61,23 +77,33 @@ export default function HomePage() {
         <section aria-labelledby="equity-label" className="lg:col-start-1 lg:row-start-1">
           <div className="flex items-center gap-2">
             <h2 id="equity-label" className="text-sm text-quiet">Your book</h2>
-            <Tag kind="sample">Sample</Tag>
+            <Tag kind="sample">Sample quotes</Tag>
           </div>
-          <p className="serif mt-2 text-[56px] leading-none tracking-tight text-deep md:text-[64px]">{money(book.equity, 0)}</p>
-          <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-            <div className="flex gap-2">
-              <dt className="text-quiet">Season</dt>
-              <dd className={tone(seasonReturn)}>{percent(seasonReturn, 2)}</dd>
+          {book ? (
+            <>
+              <p className="serif mt-2 text-[56px] leading-none tracking-tight text-deep md:text-[64px]">{money(book.equity, 0)}</p>
+              <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                <div className="flex gap-2">
+                  <dt className="text-quiet">Season</dt>
+                  <dd className={seasonReturn === null ? "text-quiet" : tone(seasonReturn)}>
+                    {seasonReturn === null ? "Unavailable" : percent(seasonReturn, 2)}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-quiet">Cash</dt>
+                  <dd className="mono text-forest">{money(book.cash, 0)}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-quiet">Held for open orders</dt>
+                  <dd className="mono text-forest">{money(Number(student.valuation.reservedCash), 0)}</dd>
+                </div>
+              </dl>
+            </>
+          ) : (
+            <div className="mt-3">
+              <StatusNote kind="unavailable" compact title="Valuation unavailable" body="A holding has no stored quote, so equity and season return are not shown." />
             </div>
-            <div className="flex gap-2">
-              <dt className="text-quiet">{round.name}</dt>
-              <dd className={tone(standing.roundReturn)}>{percent(standing.roundReturn, 2)}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="text-quiet">Cash</dt>
-              <dd className="mono text-forest">{money(book.cash, 0)}</dd>
-            </div>
-          </dl>
+          )}
         </section>
 
         <aside aria-labelledby="next-action" className="rounded-3xl bg-wash p-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
@@ -99,7 +125,7 @@ export default function HomePage() {
               <StatusNote kind="empty" compact title="No valuations yet" body="Your line appears after the first end-of-day valuation." />
             )}
           </div>
-          <p className="mt-3 text-[13px] leading-5 text-quiet">The sample path does not yet reconcile with the sample book above. The server ledger replaces both.</p>
+          <p className="mt-3 text-[13px] leading-5 text-quiet">The path is the sample investor&apos;s demonstration series. Your book above is your own ledger at labeled sample quotes; the two do not reconcile.</p>
           <p className="mt-2 text-[13px] leading-5 text-quiet">
             <Tag kind="unavailable">Benchmark unavailable</Tag>
             <span className="ml-2">No licensed S&amp;P 500 total-return series is connected, so no comparison line is drawn.</span>
@@ -153,7 +179,7 @@ export default function HomePage() {
           ) : null}
           <AlsoRow
             href="/professor"
-            title={book.positions[0] ? `Ask why ${book.positions[0].ticker} is ${plainPercent(book.positions[0].weight, 0)} of your book` : "Ask the Professor how to start a first position"}
+            title={book?.positions[0] ? `Ask why ${book.positions[0].ticker} is ${plainPercent(book.positions[0].weight, 0)} of your book` : "Ask the Professor how to start a first position"}
             meta="Professor"
             tag={<Tag kind="unavailable">Demonstration only</Tag>}
           />
