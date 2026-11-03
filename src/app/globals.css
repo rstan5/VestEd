@@ -1,26 +1,160 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7faf5;
+  --surface: #ffffff;
+  --mint: #eaf5e8;
+  --pale: #d8ebd5;
+  --sage: #a6c5a0;
+  --medium: #5b9568;
+  --primary: #247448;
+  --forest: #174f36;
+  --deep: #103b2b;
+  --ink: #10261c;
+  --muted: #667a6b;
+  --loss: #9e3b32;
+  --loss-soft: #f8e8e4;
+  --line: #d5e4d4;
+  --shadow: 0 10px 30px rgba(16, 59, 43, 0.05);
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-mint: var(--mint);
+  --color-pale: var(--pale);
+  --color-sage: var(--sage);
+  --color-medium: var(--medium);
+  --color-primary: var(--primary);
+  --color-forest: var(--forest);
+  --color-deep: var(--deep);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-loss: var(--loss);
+  --color-loss-soft: var(--loss-soft);
+  --color-line: var(--line);
   --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-newsreader);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
 
 body {
+  margin: 0;
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+button, a, input, select { font: inherit; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.serif { font-family: var(--font-newsreader), Georgia, serif; }
+.mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.up { color: var(--primary); }
+.down { color: var(--loss); }
+.flat { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 560;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfdfb;
+}
+td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #e7f0e6;
+  font-size: 14px;
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: #f8fcf7; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--forest);
+  text-decoration: none;
+  font-size: 14px;
+}
+.nav-link:hover { background: var(--mint); }
+.nav-link[data-active="true"] {
+  background: var(--mint);
+  color: var(--deep);
+  font-weight: 600;
+}
+
+.btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--primary);
+  color: #f7faf5;
+  cursor: pointer;
+}
+.btn:hover { background: var(--forest); }
+.btn.secondary {
+  background: transparent;
+  color: var(--forest);
+  border: 1px solid var(--sage);
+}
+.btn.secondary:hover { background: var(--mint); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.field, .select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--mint);
+  color: var(--forest);
+  border: 1px solid var(--pale);
+}
+.pill.warn { background: var(--loss-soft); color: var(--loss); border-color: #efd2cc; }
+.pill.dark { background: var(--deep); color: #eaf5e8; border-color: transparent; }
+
+.hero {
+  background: linear-gradient(135deg, #247448, #103b2b);
+  color: #f4faf4;
+}
+
+.wash {
+  background: linear-gradient(180deg, #eaf5e8, #f7faf5 70%);
 }

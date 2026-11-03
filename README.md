@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VestEd
 
-## Getting Started
+VestEd is a collegiate investment competition prototype: individual, club, and university standings, a simulated portfolio, and an AI Professor that explains the sample book. No real money. No live market, news, or model integration.
 
-First, run the development server:
+## Run locally
 
 ```bash
+cd /Users/rstanford5/Desktop/VestEd
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The demo session is Maya Chen. Trades persist in this browser under `vested.demo.ledger.v1`. **Reset demo** in the header restores her original book.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test
+npm run lint
+npx tsc --noEmit
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## What works
 
-## Learn More
+- Dashboard, portfolio, markets, security pages, competition boards, investor and club profiles, universities, research, and the professor chat.
+- Buy and sell validation against cash, position size, and duplicate order ids. Fills use the sample quote plus or minus one cent.
+- Sorting, search, university filter, period switch, and side-by-side compare on the boards.
+- Scoring helpers for return, drawdown minimums, diversification floor, and risk-adjusted minimums.
 
-To learn more about Next.js, take a look at the following resources:
+## What is mocked
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Quotes, charts on security pages, news, and standings for everyone except Maya's provisional book.
+- Authentication, verification, and club applications. Applications do not change rosters.
+- AI Professor replies. They are deterministic templates tagged Demonstration.
+- Prior-year pages show archived champions only.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Not implemented
 
-## Deploy on Vercel
+- Supabase auth, Postgres, and row-level security.
+- A market-data vendor, corporate actions, and a real trading calendar.
+- Server-authoritative orders and immutable round-close jobs.
+- A model API. Leave `AI_API_KEY` empty. See `.env.example`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Read `PRODUCT_SPEC.md` for scoring rules and `ARCHITECTURE.md` for the production boundary. The next milestone is the database and a server ledger, not a vendor key in the browser.
