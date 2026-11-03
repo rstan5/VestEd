@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import { Shell } from "@/components/shell";
+import { AccountProvider } from "@/lib/account/context";
+import { getAccountState } from "@/lib/account/session";
 import { PortfolioProvider } from "@/lib/portfolio-state";
 import "./globals.css";
 
@@ -24,13 +26,16 @@ export const metadata: Metadata = {
   description: "Collegiate investment competition prototype. Sample data, no real-money trading.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const account = await getAccountState();
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} antialiased`}>
-        <PortfolioProvider>
-          <Shell>{children}</Shell>
-        </PortfolioProvider>
+        <AccountProvider value={account}>
+          <PortfolioProvider>
+            <Shell>{children}</Shell>
+          </PortfolioProvider>
+        </AccountProvider>
       </body>
     </html>
   );

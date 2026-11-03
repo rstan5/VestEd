@@ -13,7 +13,7 @@ npx next dev --hostname 127.0.0.1 --port 3100
 
 `npm run dev` runs the same command with Turbopack. The app binds to `127.0.0.1:3100` only. Never start it with `0.0.0.0` or on port 3000.
 
-Open [http://127.0.0.1:3100](http://127.0.0.1:3100). The demo session is Maya Chen. Trades persist in this browser under `vested.demo.ledger.v1`. **Reset demo** in the header restores her original book.
+Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Home, Portfolio, onboarding, account pages, and student profiles need a signed-in student, so start local Supabase first (below). The book is still the shared sample book: trades persist in this browser under `vested.demo.ledger.v1`, and **Reset sample book** in the account menu restores it.
 
 ```bash
 npm test
@@ -44,6 +44,21 @@ npx supabase stop
 All host ports stay inside 3130–3159. Studio, Realtime, analytics, the connection pooler, imgproxy, and the edge runtime are disabled.
 
 **Exposure warning.** Supabase CLI 3.0.0 cannot bind published ports to localhost. Docker publishes the ports above on all interfaces (`0.0.0.0` and `[::]`), so other devices on the same network can reach this local stack while it runs. This is unavoidable with this CLI version. Keep only disposable data in it and run `npx supabase stop` whenever you are not using it. The Next.js app is not affected: it always binds `127.0.0.1:3100`.
+
+## Accounts
+
+Students register with email and password through Supabase Auth. `src/middleware.ts` refreshes the session cookie on each request and sends signed-out visitors to `/login`. A new student lands on `/onboarding`, can finish without a club or university, and is shown as an unverified individual.
+
+```bash
+npx supabase migration up                  # applies supabase/migrations to the running local stack
+npx supabase status -o env                 # copy API_URL and PUBLISHABLE_KEY into .env.local as
+                                           # NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+npx supabase test db                       # pgTAP tests in supabase/tests
+```
+
+- `profiles` has one row per student, created by a trigger at signup. Row Level Security lets a student read and update only their own row, and only the name, class year, concentration, privacy, and onboarding columns.
+- Holdings are private by default. `public_profile` and `public_holdings` are the only cross-student reads, and they return a safe projection: name, class year, concentration, join month, and, only while published, tickers and weights. Never cash, quantities, cost, orders, or activity.
+- Local signup does not require email confirmation. Password recovery mail goes to Mailpit on port 3133.
 
 ## Environment
 
@@ -78,13 +93,13 @@ Only the in-memory sample store exists so far. The Postgres store comes with the
 ## What is mocked
 
 - Quotes, charts on security pages, news, and standings for everyone except Maya's provisional book.
-- Authentication, verification, and club applications. Applications do not change rosters.
+- University verification and club applications. Applications do not change rosters.
 - AI Professor replies. They are deterministic templates tagged Demonstration.
 - Prior-year pages show archived champions only.
 
 ## Not implemented
 
-- Supabase auth, Postgres, and row-level security.
+- Server-side holdings: `published_holdings_source` returns no rows until the server ledger stores positions.
 - A market-data vendor, corporate actions, and a real trading calendar.
 - Server-authoritative orders and immutable round-close jobs.
 - A model API. Leave `AI_API_KEY` empty. See `.env.example`.

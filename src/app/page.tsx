@@ -3,45 +3,37 @@
 import Link from "next/link";
 import { QuietLine } from "@/components/chart";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
-import { CASH_DRAG_THRESHOLD, DEMO_INVESTOR_ID } from "@/lib/domain";
+import { useAccountState } from "@/lib/account/context";
+import { firstName as firstNameOf } from "@/lib/account/types";
+import { CASH_DRAG_THRESHOLD } from "@/lib/domain";
 import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/format";
 import type { Book } from "@/lib/portfolio";
 import { usePortfolio } from "@/lib/portfolio-state";
-import {
-  clubById,
-  clubStandings,
-  currentRound,
-  headlines,
-  investorById,
-  mayaSeries,
-  seasonMeta,
-  universityById,
-  universityStandings,
-} from "@/lib/sample-data";
+import { currentRound, headlines, mayaSeries, seasonMeta } from "@/lib/sample-data";
 
 export default function HomePage() {
   const { ready, book, standings, standing, seasonReturn } = usePortfolio();
-  const investor = investorById(DEMO_INVESTOR_ID);
+  const accountState = useAccountState();
   const round = currentRound();
 
-  if (!ready) return <HomeLoading />;
-  if (!investor) {
+  if (accountState.status !== "signed-in") {
     return (
       <StatusNote
         kind="error"
         title="Your summary could not be loaded"
-        body="The sample student record is missing from this build. Reset the sample book from the account menu, then reload."
+        body={accountState.status === "error" ? accountState.message : "Sign in to see your book and rank."}
+        action={<Link href="/login" className="v-btn quiet small">Sign in</Link>}
       />
     );
   }
+  if (!ready) return <HomeLoading />;
 
-  const firstName = investor.name.split(" ")[0];
-  const official = standings.find((row) => row.investorId === investor.id);
-  const club = investor.clubId ? clubById(investor.clubId) : undefined;
-  const clubRow = club ? clubStandings.find((row) => row.clubId === club.id) : undefined;
-  const university = universityById(investor.universityId);
-  const universityRow = universityStandings.find((row) => row.universityId === investor.universityId);
-  const action = nextAction(book, round.name, shortDate(round.end));
+  const account = accountState.account;
+  const firstName = firstNameOf(account.displayName);
+  const official = standings.find((row) => row.investorId === standing.investorId);
+  const action = account.onboarded
+    ? nextAction(book, round.name, shortDate(round.end))
+    : { title: "Finish setting up", body: "Add optional profile basics and choose how to continue. No club is needed.", href: "/onboarding", label: "Continue setup" };
   const points = mayaSeries.map((point) => ({ label: point.date, value: point.equity }));
   const holdingNews = headlines.find((item) => item.relevance === "holding");
 
@@ -49,7 +41,13 @@ export default function HomePage() {
     <div className="mx-auto max-w-[980px]">
       <header>
         <p className="text-sm text-quiet">{seasonMeta.name} · {round.name}</p>
-        <h1 className="serif mt-1 text-[40px] leading-[1.1] text-forest md:text-[48px]">Welcome back, {firstName}.</h1>
+        <h1 className="serif mt-1 text-[40px] leading-[1.1] text-forest md:text-[48px]">{account.onboarded ? "Welcome back" : "Welcome"}, {firstName}.</h1>
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-quiet" data-testid="account-standing">
+          <Tag>Individual account</Tag>
+          <Tag kind="unavailable">University not verified</Tag>
+          <span>No club needed to compete.</span>
+          <Link href="/account/verification" className="text-primary underline-offset-4 hover:underline">Verify a university</Link>
+        </p>
       </header>
 
       <div className="mt-10 grid gap-x-14 gap-y-10 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -110,7 +108,7 @@ export default function HomePage() {
               <span className="text-sm text-forest">{countdown(round.end, new Date(seasonMeta.asOf))}</span>
             </span>
           </StripItem>
-          <StripItem label="Your rank">
+          <StripItem label="Your rank · sample book">
             {official ? (
               <span className="flex items-baseline gap-2">
                 <span className="mono text-xl text-deep">#{official.rank}</span>
@@ -121,11 +119,11 @@ export default function HomePage() {
               <span className="text-sm text-quiet">Unavailable</span>
             )}
           </StripItem>
-          <StripItem label={club ? club.shortName : "Club"}>
-            {club && clubRow ? <span className="mono text-xl text-deep">#{clubRow.rank}</span> : <span className="text-sm text-quiet">{club ? "Unavailable" : "Not in a club"}</span>}
+          <StripItem label="Club">
+            <span className="text-sm text-quiet">Not in a club · competing as an individual</span>
           </StripItem>
-          <StripItem label={university?.shortName ?? "University"}>
-            {universityRow ? <span className="mono text-xl text-deep">#{universityRow.rank}</span> : <span className="text-sm text-quiet">Unavailable</span>}
+          <StripItem label="University">
+            <Link href="/account/verification" className="text-sm text-quiet underline-offset-4 hover:underline">Not verified</Link>
           </StripItem>
           <li className="flex items-center px-5 py-4">
             <Link href="/competition" className="text-sm text-primary underline-offset-4 hover:underline">Standings →</Link>

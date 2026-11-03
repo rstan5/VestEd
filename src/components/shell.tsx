@@ -3,13 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { signOut } from "@/app/auth/actions";
+import { useAccountState } from "@/lib/account/context";
+import { firstName, initials } from "@/lib/account/types";
 import { countdown, shortDate } from "@/lib/format";
-import { currentRound, demoInvestor, rounds, seasonMeta, universityById } from "@/lib/sample-data";
+import { currentRound, rounds, seasonMeta } from "@/lib/sample-data";
 import { usePortfolio } from "@/lib/portfolio-state";
 
-// Only these routes use the new student shell. Every other route keeps the
-// prototype chrome until library/design-gate.md records visual approval.
-const REDESIGNED_ROUTES = new Set(["/", "/portfolio", "/competition"]);
+// Routes on the student shell. Markets, Campus, and Professor keep the prototype
+// chrome until their own rollout.
+const STUDENT_ROUTES = new Set(["/", "/portfolio", "/competition", "/login", "/signup", "/onboarding"]);
+const STUDENT_PREFIXES = ["/account/", "/students/"];
+
+function usesStudentShell(pathname: string): boolean {
+  return STUDENT_ROUTES.has(pathname) || STUDENT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 export const primaryNav = [
   { href: "/", label: "Home", match: ["/"], icon: "home" },
@@ -19,19 +27,18 @@ export const primaryNav = [
   { href: "/clubs", label: "Campus", match: ["/clubs", "/universities"], icon: "campus" },
 ] as const;
 
-type AccountLink = { label: string; href: string | null; note?: string };
+type AccountLink = { label: string; href: string; note?: string };
 
-// Destinations without a route yet stay visible and say so, rather than linking to a 404.
-export const accountLinks = (investorId: string): AccountLink[] => [
-  { label: "Profile", href: `/investors/${investorId}`, note: "Sample profile" },
-  { label: "Privacy", href: null, note: "Arrives with accounts" },
-  { label: "University verification", href: null, note: "Arrives with accounts" },
-  { label: "Settings", href: null, note: "Arrives with accounts" },
+export const accountLinks = (): AccountLink[] => [
+  { label: "Profile", href: "/account/profile" },
+  { label: "Privacy", href: "/account/privacy" },
+  { label: "University verification", href: "/account/verification", note: "Not verified" },
+  { label: "Settings", href: "/account/settings" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (REDESIGNED_ROUTES.has(pathname)) return <StudentShell pathname={pathname}>{children}</StudentShell>;
+  if (usesStudentShell(pathname)) return <StudentShell pathname={pathname}>{children}</StudentShell>;
   return <LegacyShell pathname={pathname}>{children}</LegacyShell>;
 }
 
@@ -93,13 +100,23 @@ function StudentShell({ pathname, children }: { pathname: string; children: Reac
 }
 
 function AccountMenu() {
+  const state = useAccountState();
+  if (state.status !== "signed-in") {
+    return (
+      <span className="flex items-center gap-1">
+        <Link href="/login" className="v-nav">Sign in</Link>
+        <Link href="/signup" className="v-btn small">Create account</Link>
+      </span>
+    );
+  }
+  return <SignedInMenu displayName={state.account.displayName} />;
+}
+
+function SignedInMenu({ displayName }: { displayName: string }) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const { reset } = usePortfolio();
-  const investor = demoInvestor();
-  const university = universityById(investor.universityId);
-  const initials = investor.name.split(" ").map((part) => part[0]).join("").slice(0, 2);
 
   useEffect(() => {
     if (!open) return;
@@ -130,32 +147,25 @@ function AccountMenu() {
         aria-controls="account-menu"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-mint text-[12px] font-medium text-forest" aria-hidden="true">{initials}</span>
-        <span className="hidden sm:inline">{investor.name.split(" ")[0]}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-mint text-[12px] font-medium text-forest" aria-hidden="true">{initials(displayName)}</span>
+        <span className="hidden sm:inline" data-testid="account-first-name">{firstName(displayName)}</span>
         <span className="sr-only">Account menu</span>
         <svg viewBox="0 0 12 12" className="h-3 w-3 text-quiet" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
       </button>
       {open ? (
         <div id="account-menu" className="absolute right-0 top-[calc(100%+8px)] w-[320px] max-w-[calc(100vw-40px)] rounded-2xl border border-rule bg-paper p-2 shadow-[0_18px_40px_rgba(16,59,43,0.08)]">
           <div className="px-3 pb-3 pt-2">
-            <div className="text-sm font-medium text-forest">{investor.name}</div>
-            <div className="text-xs text-quiet">Sample session · {university?.shortName ?? "University unavailable"} · Class of {investor.classYear}</div>
+            <div className="text-sm font-medium text-forest" data-testid="account-name">{displayName}</div>
+            <div className="text-xs text-quiet">Individual account · University not verified</div>
           </div>
           <nav aria-label="Account">
             <ul className="border-t border-rule pt-1">
-              {accountLinks(investor.id).map((item) => (
+              {accountLinks().map((item) => (
                 <li key={item.label}>
-                  {item.href ? (
-                    <Link href={item.href} className="v-menu-item" onClick={() => setOpen(false)}>
-                      <span>{item.label}</span>
-                      {item.note ? <span className="text-[11px] text-quiet">{item.note}</span> : null}
-                    </Link>
-                  ) : (
-                    <span className="v-menu-item" aria-disabled="true">
-                      <span className="text-ink/70">{item.label}</span>
-                      <span className="text-[11px] text-quiet">{item.note}</span>
-                    </span>
-                  )}
+                  <Link href={item.href} className="v-menu-item" onClick={() => setOpen(false)}>
+                    <span>{item.label}</span>
+                    {item.note ? <span className="text-[11px] text-quiet">{item.note}</span> : null}
+                  </Link>
                 </li>
               ))}
               <li className="lg:hidden">
@@ -172,10 +182,11 @@ function AccountMenu() {
                 </button>
               </li>
               <li>
-                <span className="v-menu-item" aria-disabled="true">
-                  <span className="text-ink/70">Sign out</span>
-                  <span className="text-[11px] text-quiet">No account session yet</span>
-                </span>
+                <form action={signOut}>
+                  <button type="submit" className="v-menu-item w-full text-left">
+                    <span>Sign out</span>
+                  </button>
+                </form>
               </li>
             </ul>
           </nav>
@@ -215,8 +226,7 @@ const legacyLinks = [
 
 function LegacyShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const investor = demoInvestor();
-  const university = universityById(investor.universityId);
+  const state = useAccountState();
   const round = currentRound();
   const { reset } = usePortfolio();
 
@@ -230,9 +240,18 @@ function LegacyShell({ pathname, children }: { pathname: string; children: React
           ))}
         </nav>
         <div className="border-t border-line px-4 py-4 text-xs leading-5 text-muted">
-          Sample session
-          <div className="mt-1 text-sm text-forest">{investor.name}</div>
-          {university?.shortName} · Class of {investor.classYear}
+          {state.status === "signed-in" ? (
+            <>
+              Signed in
+              <div className="mt-1 text-sm text-forest">{state.account.displayName}</div>
+              Individual · University not verified
+            </>
+          ) : (
+            <>
+              Signed out
+              <div className="mt-1"><Link className="text-sm text-primary" href="/login">Sign in</Link></div>
+            </>
+          )}
         </div>
       </aside>
       <div className="min-w-0">
@@ -248,7 +267,11 @@ function LegacyShell({ pathname, children }: { pathname: string; children: React
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link className="btn secondary" href={`/investors/${investor.id}`}>Profile</Link>
+              {state.status === "signed-in" ? (
+                <Link className="btn secondary" href="/account/profile">Profile</Link>
+              ) : (
+                <Link className="btn secondary" href="/login">Sign in</Link>
+              )}
               <button className="btn secondary" type="button" onClick={reset}>Reset demo</button>
             </div>
           </div>
