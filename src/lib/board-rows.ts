@@ -1,6 +1,6 @@
 import { DEMO_INVESTOR_ID, type ClubStanding, type Standing, type UniversityStanding } from "./domain";
 import type { StandingMetrics } from "./board";
-import { clubById, clubStandings, investorById, universityById, universityStandings } from "./sample-data";
+import { clubById, clubStandings, investorById, sampleRoundResults, universityById, universityStandings } from "./sample-data";
 
 export type Board = "individual" | "club" | "university";
 
@@ -96,4 +96,22 @@ export function buildRows(board: Board, sources: BoardSources): { rows: BoardRow
     }
   }
   return { rows, missing };
+}
+
+/** Page sources for the sample build: the given individual standings plus sample clubs and universities, each with sample round results attached. */
+export function sampleBoardSources(individual: Standing[]): BoardSources {
+  return {
+    individual: withSampleRounds(individual, "individual", (row) => row.investorId),
+    clubs: withSampleRounds(clubStandings, "club", (row) => row.clubId),
+    universities: withSampleRounds(universityStandings, "university", (row) => row.universityId),
+  };
+}
+
+function withSampleRounds<T>(rows: T[], board: Board, idOf: (row: T) => string): Array<WithRounds<T>> {
+  const byRound = sampleRoundResults[board];
+  return rows.map((row) => {
+    const id = idOf(row);
+    const rounds = Object.fromEntries(Object.entries(byRound).flatMap(([roundId, results]) => (results[id] ? [[roundId, results[id]]] : [])));
+    return { ...row, ...(Object.keys(rounds).length > 0 ? { rounds } : {}) };
+  });
 }

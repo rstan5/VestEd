@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
 import { MIN_CONSISTENCY_ROUNDS, MIN_DRAWDOWN_OBS, MIN_RISK_OBS, type Round } from "@/lib/domain";
 import { applyWindow, sortBoard, type BoardSortKey, type BoardWindow, type Windowed } from "@/lib/board";
-import { buildRows, type Board, type BoardRow } from "@/lib/board-rows";
+import { buildRows, sampleBoardSources, type Board, type BoardRow } from "@/lib/board-rows";
 import { percent, plainPercent, shortDate, tone } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio-state";
 import { rounds, seasonMeta, universities } from "@/lib/sample-data";
@@ -49,7 +49,7 @@ export default function LeaderboardPage() {
 
   const round = rounds.find((item) => item.id === roundId);
   const boardWindow = useMemo<BoardWindow>(() => (round ? { kind: "round", round } : { kind: "season" }), [round]);
-  const { rows: baseRows, missing } = useMemo(() => buildRows(board, { individual: standings }), [board, standings]);
+  const { rows: baseRows, missing } = useMemo(() => buildRows(board, sampleBoardSources(standings)), [board, standings]);
   const windowRows = useMemo(() => applyWindow(baseRows, boardWindow), [baseRows, boardWindow]);
   const allRows = useMemo(() => windowRows ?? [], [windowRows]);
   const useRound = boardWindow.kind === "round";
@@ -128,7 +128,10 @@ export default function LeaderboardPage() {
               <p>
                 {rows.length} of {allRows.length} {noun} · {useRound && round ? `${round.name} window, ${round.status === "live" ? "provisional " : ""}rank by round return` : "Season to date"} · as of {shortDate(seasonMeta.asOf)}
               </p>
-              <Tag kind="unavailable">Vs S&amp;P 500 unavailable</Tag>
+              <span className="flex flex-wrap gap-2">
+                {useRound && round?.status === "final" ? <Tag kind="sample">Sample round results, not finalized</Tag> : null}
+                <Tag kind="unavailable">Vs S&amp;P 500 unavailable</Tag>
+              </span>
             </div>
             {missing > 0 ? (
               <div className="mb-3">

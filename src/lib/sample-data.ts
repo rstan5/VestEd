@@ -14,6 +14,7 @@ import {
   type University,
   type UniversityStanding,
 } from "./domain";
+import type { RoundResult } from "./board";
 
 export const universities: University[] = [
   { id: "michigan", name: "University of Michigan", shortName: "Michigan", city: "Ann Arbor", conference: "Big Ten" },
@@ -109,9 +110,10 @@ const mayaPath = [
 
 export const mayaSeries: SeriesPoint[] = buildSeries(STARTING_CAPITAL, mayaPath, "2026-08-24");
 
+// Sample book. It must reconcile: cash plus position cost equals starting capital plus realized gain.
 export const canonicalLedger: Ledger = {
   cash: 8420.55,
-  realizedGain: 640.18,
+  realizedGain: -27166.35,
   positions: [
     { ticker: "MSFT", quantity: 42, averageCost: 402.15 },
     { ticker: "CAT", quantity: 28, averageCost: 368.4 },
@@ -129,6 +131,33 @@ export const canonicalLedger: Ledger = {
 };
 
 export const watchlist = ["NVDA", "AMZN", "UNH", "SPY"];
+
+/**
+ * Sample per-round results for the prototype, keyed by board, then round id, then entry id. They are
+ * illustrative fixtures, not finalized history. Round 3 is deliberately absent so it stays unavailable.
+ */
+export const sampleRoundResults: Record<"individual" | "club" | "university", Record<string, Record<string, RoundResult>>> = {
+  individual: {
+    r1: roundReturns({
+      "priya-shah": 0.024, "hannah-brooks": 0.031, "elena-vasquez": 0.012, "maya-chen": 0.018, "marcus-reed": 0.027, "owen-blake": 0.009,
+      "sofia-alvarez": 0.021, "daniel-cho": 0.015, "samuel-ortiz": 0.006, "claire-donovan": 0.011, "lucia-nguyen": 0.019, "william-adebayo": 0.004,
+      "iris-patel": 0.014, "amira-hassan": 0.033, "grace-lin": -0.003, "patrick-omeara": 0.002, "nina-kowalski": 0.008, "jordan-hale": -0.007,
+    }),
+    r2: roundReturns({
+      "priya-shah": 0.017, "hannah-brooks": 0.009, "elena-vasquez": 0.026, "maya-chen": 0.011, "marcus-reed": -0.004, "owen-blake": 0.022,
+      "sofia-alvarez": 0.005, "daniel-cho": 0.019, "samuel-ortiz": 0.013, "claire-donovan": 0.003, "lucia-nguyen": -0.009, "william-adebayo": 0.015,
+      "iris-patel": 0.007, "amira-hassan": -0.012, "grace-lin": 0.01, "patrick-omeara": 0.006, "nina-kowalski": 0.001, "jordan-hale": 0.004,
+    }),
+  },
+  club: {
+    r1: roundReturns({ "wharton-pmc": 0.019, mcintire: 0.022, mia: 0.013, "texas-uic": 0.025, "berkeley-fig": 0.016, "nyu-iic": 0.028, "nd-invest": 0.004, "georgetown-gib": 0.007 }),
+    r2: roundReturns({ "wharton-pmc": 0.018, mcintire: 0.008, mia: 0.021, "texas-uic": -0.003, "berkeley-fig": 0.011, "nyu-iic": -0.006, "nd-invest": 0.009, "georgetown-gib": 0.014 }),
+  },
+  university: {
+    r1: roundReturns({ penn: 0.018, virginia: 0.02, michigan: 0.012, texas: 0.025, berkeley: 0.016, nyu: 0.028, "notre-dame": 0.004, georgetown: 0.007 }),
+    r2: roundReturns({ penn: 0.017, virginia: 0.01, michigan: 0.019, texas: -0.003, berkeley: 0.011, nyu: -0.006, "notre-dame": 0.009, georgetown: 0.014 }),
+  },
+};
 
 export const individualStandings: Standing[] = [
   standing("priya-shah", 0.086, 0.021, 81.4, 1.42, 0.041, 0.78, 0.75, 0.031, 1, 1),
@@ -309,6 +338,10 @@ function uniStanding(
   previousRank: number,
 ): UniversityStanding {
   return { universityId, seasonReturn, roundReturn, score, riskAdjusted, drawdown, diversification, consistency, relative, eligibleInvestors, rank, previousRank };
+}
+
+function roundReturns(returns: Record<string, number>): Record<string, RoundResult> {
+  return Object.fromEntries(Object.entries(returns).map(([id, value]) => [id, { return: value }]));
 }
 
 function buildSeries(start: number, daily: number[], startDate: string): SeriesPoint[] {

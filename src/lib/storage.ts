@@ -1,7 +1,7 @@
 import { DEMO_INVESTOR_ID, type Ledger } from "./domain";
 import { canonicalLedger } from "./sample-data";
 
-export const LEDGER_KEY = "vested.demo.ledger.v1";
+export const LEDGER_KEY = "vested.demo.ledger.v2";
 export const WATCHLIST_KEY = "vested.demo.watchlist.v1";
 
 export function loadLedger(): Ledger {

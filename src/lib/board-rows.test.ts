@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyWindow, sortBoard, type RoundResult } from "./board";
-import { buildRows, type Board, type BoardSources } from "./board-rows";
-import { clubStandings, individualStandings, rounds, universityStandings } from "./sample-data";
+import { buildRows, sampleBoardSources, type Board, type BoardSources } from "./board-rows";
+import { canonicalLedger, clubStandings, individualStandings, rounds, sampleRoundResults, universityStandings } from "./sample-data";
+import { mayaView, rankedStandings } from "./view";
 
 const [roundOne, roundTwo, roundThree] = rounds.filter((round) => round.status === "final");
 
-// Test fixtures only: the sample build stores no finalized round results.
+// Test fixtures only, independent of the sample round results the page uses.
 function withRounds<T>(rows: T[], first: number[], second: number[]): Array<T & { rounds: Record<string, RoundResult> }> {
   return rows.map((row, index) => ({
     ...row,
@@ -70,4 +71,27 @@ test("a round with no stored rows stays unavailable after the adapter", () => {
 
 test("rows without stored rounds carry no rounds map", () => {
   for (const row of buildRows("individual", { individual: individualStandings }).rows) assert.equal("rounds" in row, false);
+});
+
+test("the competition page path carries two distinct sample rounds and leaves the rest unavailable", () => {
+  const [, , , liveRound, scheduledRound] = rounds;
+  const pageSources = sampleBoardSources(rankedStandings(mayaView(canonicalLedger).standing));
+  for (const board of ["individual", "club", "university"] as const) {
+    const { rows } = buildRows(board, pageSources);
+    const ids = (round: (typeof rounds)[number]) => {
+      const windowed = applyWindow(rows, { kind: "round", round });
+      assert.ok(windowed, `${round.name} has sample rows for the ${board} board`);
+      const sorted = sortBoard(windowed, "rank");
+      for (const row of sorted) assert.equal(row.window.return, sampleRoundResults[board][round.id][row.id].return);
+      return sorted.map((row) => row.id);
+    };
+    const first = ids(roundOne);
+    const second = ids(roundTwo);
+    assert.equal(first.length, rows.length);
+    assert.notDeepEqual(first, second);
+    assert.notEqual(first[0], second[0]);
+    assert.equal(applyWindow(rows, { kind: "round", round: roundThree }), null);
+    assert.equal(applyWindow(rows, { kind: "round", round: scheduledRound }), null);
+    assert.ok(applyWindow(rows, { kind: "round", round: liveRound }));
+  }
 });
