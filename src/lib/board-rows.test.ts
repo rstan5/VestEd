@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyWindow, sortBoard, type RoundResult } from "./board";
-import { buildRows, sampleBoardSources, type Board, type BoardSources } from "./board-rows";
+import { buildRows, sampleBoardSources, serverWindowRows, type Board, type BoardSources } from "./board-rows";
 import { canonicalLedger, clubStandings, individualStandings, rounds, sampleRoundResults, universityStandings } from "./sample-data";
 import { mayaView, rankedStandings } from "./view";
 
@@ -94,4 +94,34 @@ test("the competition page path carries two distinct sample rounds and leaves th
     assert.equal(applyWindow(rows, { kind: "round", round: scheduledRound }), null);
     assert.ok(applyWindow(rows, { kind: "round", round: liveRound }));
   }
+});
+
+test("server window rows keep the server's rank, withheld components, and order through filter and sort", () => {
+  const blank = { scoreLabel: null, riskAdjusted: null, consistency: null, institutional: null, included: [] };
+  const payload = {
+    universities: [{ id: "u1", shortName: "U1" }, { id: "u2", shortName: "U2" }],
+    clubs: [],
+    windows: {
+      season: {
+        kind: "provisional" as const,
+        asOf: "2026-11-04T21:00:00.000Z",
+        boards: {
+          individual: [],
+          club: [
+            { ...blank, entrantId: "big", name: "Big Club", universityId: "u1", clubId: null, rank: 2, return: 0.02, score: 50, drawdown: 0.05, diversification: 0.4, eligibleStudents: 12, withheld: ["riskAdjusted", "consistency"] },
+            { ...blank, entrantId: "small", name: "Small Club", universityId: "u2", clubId: null, rank: 1, return: 0.04, score: 60, drawdown: 0.08, diversification: 0.5, eligibleStudents: 3, withheld: ["riskAdjusted", "consistency"] },
+            { ...blank, entrantId: "pair", name: "Pair Club", universityId: "u2", clubId: null, rank: null, return: null, score: null, drawdown: null, diversification: null, eligibleStudents: 2, withheld: ["return", "score", "riskAdjusted", "drawdown", "diversification", "consistency"] },
+          ],
+          university: [],
+        },
+      },
+    },
+  };
+  assert.equal(serverWindowRows(payload, "club", "fall-2026-r1", null), null, "an unpublished window has no rows");
+  const rows = serverWindowRows(payload, "club", "season", null)!;
+  assert.deepEqual(rows.map((row) => [row.id, row.window.rank]), [["big", 2], ["small", 1], ["pair", null]], "ranks are taken from the server as published");
+  assert.deepEqual(rows.find((row) => row.id === "pair")!.withheld, ["return", "score", "riskAdjusted", "drawdown", "diversification", "consistency"]);
+  assert.deepEqual(sortBoard(rows, "rank").map((row) => row.id), ["small", "big", "pair"], "an unranked group sorts after ranked ones");
+  const filtered = sortBoard(rows.filter((row) => row.universityId === "u1"), "drawdown");
+  assert.deepEqual(filtered.map((row) => [row.id, row.window.rank]), [["big", 2]], "filtering out the leader does not renumber");
 });

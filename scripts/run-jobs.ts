@@ -3,7 +3,7 @@ import { newYorkSessionClock } from "../src/lib/jobs/clock";
 import { createFixtureStore } from "../src/lib/jobs/fixture-store";
 import { SAMPLE_JOB_NOW, sampleJobSeed } from "../src/lib/jobs/fixtures";
 import { runJobsOnce, startJobTimer } from "../src/lib/jobs/run";
-import { runLedgerFills } from "../src/lib/ledger/job-store";
+import { runPostgresJobs } from "../src/lib/standings/jobs";
 import type { Database } from "../src/lib/supabase/database";
 
 try {
@@ -14,14 +14,18 @@ const storeFlag = process.argv.indexOf("--store");
 const storeName = storeFlag === -1 ? "fixture" : (process.argv[storeFlag + 1] ?? "fixture");
 const everyFlag = process.argv.indexOf("--every");
 const seconds = everyFlag === -1 ? null : Number(process.argv[everyFlag + 1]);
+const seasonFlag = process.argv.indexOf("--season");
+const seasonIds = seasonFlag === -1 ? undefined : (process.argv[seasonFlag + 1] ?? "").split(",").filter(Boolean);
 
+if (seasonIds && seasonIds.length === 0) throw new Error("--season needs one or more comma-separated season ids");
 if (seconds !== null && (!Number.isFinite(seconds) || seconds <= 0)) {
   throw new Error("--every needs a positive number of seconds");
 }
 
 async function main() {
   if (storeName === "postgres") {
-    // Fill pass over the Postgres ledger. Valuation and round-close stores land with their own features.
+    // Fills, valuations, round close, and provisional standings over the Postgres ledger. A round
+    // close is permanent, so --season limits valuation, close, and publish to the named seasons.
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
     if (!url || !serviceKey) {
@@ -32,7 +36,7 @@ async function main() {
     });
     const now = () => (process.env.JOBS_NOW ? new Date(process.env.JOBS_NOW) : new Date());
     const pass = async () => {
-      const result = await runLedgerFills(client, now());
+      const result = await runPostgresJobs(client, now(), { seasonIds });
       console.log(JSON.stringify({ store: "postgres", ...result }, null, 2));
     };
     if (seconds === null) {

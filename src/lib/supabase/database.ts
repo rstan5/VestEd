@@ -154,6 +154,77 @@ export type PositionRow = { registration_id: string; student_id: string; instrum
 export type LatestQuoteRow = { instrument_id: string; quote_id: string; price: string; as_of: string; source: "sample" | "licensed" };
 export type OrderWindowRow = { eligible_at: string; expires_at: string };
 
+// Standings rows. Figures are read as text so the board formats them from stored values.
+export type UniversityAffiliationRow = {
+  id: string;
+  student_id: string;
+  university_id: string;
+  email: string;
+  status: "pending" | "verified" | "rejected";
+  submitted_at: string;
+  decided_at: string | null;
+};
+export type ClubMembershipRow = {
+  club_id: string;
+  student_id: string;
+  role: "founder" | "moderator" | "member";
+  status: "pending" | "active" | "rejected" | "withdrawn" | "removed" | "left";
+  applied_at: string;
+};
+export type ValuationSnapshotRow = {
+  id: number;
+  registration_id: string;
+  student_id: string;
+  season_id: string;
+  valued_at: string;
+  status: "valued" | "unavailable";
+  equity: string | null;
+  cash: string;
+  holdings: Array<{ instrument_id: string; sector: string | null; value: string }>;
+  missing: string[];
+  recorded_at: string;
+};
+export type StandingsVersionRow = { id: string; season_id: string; round_id: string | null; board: string; as_of: string; computed_at: string };
+type StandingFigureColumns = {
+  entrant_id: string;
+  entrant_name: string;
+  university_id: string | null;
+  club_id: string | null;
+  rank: number | null;
+  return_pct: string | null;
+  score: string | null;
+  score_label: string | null;
+  risk_adjusted: string | null;
+  drawdown: string | null;
+  diversification: string | null;
+  consistency: string | null;
+  eligible_students: number | null;
+  institutional: boolean | null;
+  withheld: string[];
+  included: string[];
+};
+export type StandingEntryRow = StandingFigureColumns & { version_id: string };
+export type RoundClosureRow = { round_id: string; closed_at: string; recorded_at: string };
+export type FinalizedResultRow = StandingFigureColumns & {
+  id: string;
+  round_id: string;
+  season_id: string;
+  board: string;
+  edition: number;
+  supersedes: string | null;
+  finalized_at: string;
+  correction_reason: string | null;
+  recorded_at: string;
+};
+export type LatestStandingRow = StandingFigureColumns & { round_id: string | null; board: string; as_of: string };
+export type CurrentFinalizedRow = StandingFigureColumns & {
+  id: string;
+  round_id: string;
+  season_id: string;
+  board: string;
+  edition: number;
+  finalized_at: string;
+};
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 type ProfileUpdate = Partial<Pick<ProfileRow, "display_name" | "class_year" | "concentration" | "holdings_public" | "onboarded_at">>;
@@ -183,6 +254,13 @@ export type Database = {
       executions: ReadOnlyTable<ExecutionRow>;
       cash_ledger: ReadOnlyTable<CashLedgerRow>;
       positions: ReadOnlyTable<PositionRow>;
+      university_affiliations: ReadOnlyTable<UniversityAffiliationRow>;
+      club_memberships: ReadOnlyTable<ClubMembershipRow>;
+      valuation_snapshots: ReadOnlyTable<ValuationSnapshotRow>;
+      standings_versions: ReadOnlyTable<StandingsVersionRow>;
+      standing_entries: ReadOnlyTable<StandingEntryRow>;
+      round_closures: ReadOnlyTable<RoundClosureRow>;
+      finalized_results: ReadOnlyTable<FinalizedResultRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -223,6 +301,15 @@ export type Database = {
       ledger_cancel_order: { Args: { p_student: string; p_order: string; p_at: string }; Returns: Json };
       ledger_fill_order: { Args: { p_order: string; p_quote: string; p_at: string }; Returns: Json };
       ledger_expire_order: { Args: { p_order: string; p_at: string }; Returns: boolean };
+      standings_record_valuation: {
+        Args: { p_registration: string; p_valued_at: string; p_status: string; p_equity: string | null; p_missing: string[] };
+        Returns: number | null;
+      };
+      standings_publish: { Args: { p_season: string; p_round: string | null; p_board: string; p_as_of: string; p_entries: Json }; Returns: string };
+      standings_finalize_round: { Args: { p_round: string; p_closed_at: string; p_results: Json }; Returns: string };
+      standings_correct_result: { Args: { p_result: string; p_changes: Json; p_reason: string; p_at: string }; Returns: string };
+      latest_standings: { Args: { p_season: string }; Returns: LatestStandingRow[] };
+      current_finalized_results: { Args: { p_season?: string | null }; Returns: CurrentFinalizedRow[] };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

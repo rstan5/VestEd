@@ -1,17 +1,23 @@
 import { DEMO_INVESTOR_ID, type ClubStanding, type Standing, type UniversityStanding } from "./domain";
-import type { StandingMetrics } from "./board";
+import type { StandingMetrics, WindowMetrics, Windowed } from "./board";
+import type { StandingsPayload } from "./standings/load";
 import { clubById, clubStandings, investorById, sampleRoundResults, universityById, universityStandings } from "./sample-data";
 
 export type Board = "individual" | "club" | "university";
 
-export type BoardRow = StandingMetrics & {
+/** What a board row shows besides its figures. Sample and server rows share it. */
+export type BoardIdentity = {
   id: string;
   name: string;
-  href: string;
+  href: string | null;
   affiliation: string;
   universityId: string;
   self: boolean;
+  /** Group components the server withheld for too few students or incomplete coverage. */
+  withheld?: string[];
 };
+
+export type BoardRow = StandingMetrics & BoardIdentity & { href: string };
 
 type WithRounds<T> = T & Pick<StandingMetrics, "rounds">;
 
@@ -113,5 +119,46 @@ function withSampleRounds<T>(rows: T[], board: Board, idOf: (row: T) => string):
     const id = idOf(row);
     const rounds = Object.fromEntries(Object.entries(byRound).flatMap(([roundId, results]) => (results[id] ? [[roundId, results[id]]] : [])));
     return { ...row, ...(Object.keys(rounds).length > 0 ? { rounds } : {}) };
+  });
+}
+
+/** Rows for one server window, with the server's official rank. Nothing is ranked or scored here. */
+export function serverWindowRows(
+  payload: Pick<StandingsPayload, "windows" | "universities" | "clubs">,
+  board: Board,
+  windowKey: string,
+  viewerId: string | null,
+): Array<Windowed<BoardIdentity>> | null {
+  const window = payload.windows[windowKey];
+  if (!window) return null;
+  const universityName = new Map(payload.universities.map((item) => [item.id, item.shortName]));
+  const clubName = new Map(payload.clubs.map((item) => [item.id, item.name]));
+  return window.boards[board].map((row) => {
+    const university = row.universityId ? universityName.get(row.universityId) ?? null : null;
+    const metrics: WindowMetrics = {
+      return: row.return,
+      score: row.score,
+      riskAdjusted: row.riskAdjusted,
+      drawdown: row.drawdown,
+      diversification: row.diversification,
+      consistency: row.consistency,
+      rank: row.rank,
+      previousRank: null,
+    };
+    return {
+      id: row.entrantId,
+      name: row.name,
+      href: board === "individual" ? `/students/${row.entrantId}` : board === "club" ? `/campus/clubs/${row.entrantId}` : null,
+      affiliation:
+        board === "individual"
+          ? `${university ?? "No verified university"} · ${row.clubId ? clubName.get(row.clubId) ?? "Club" : "Independent"}`
+          : board === "club"
+            ? `${university ?? "No university"} · ${row.eligibleStudents ?? 0} eligible`
+            : `${row.eligibleStudents ?? 0} eligible students`,
+      universityId: row.universityId ?? "",
+      self: board === "individual" && row.entrantId === viewerId,
+      withheld: row.withheld,
+      window: metrics,
+    };
   });
 }

@@ -54,14 +54,14 @@ export const clubs: Club[] = [
 ];
 
 export const investors: Investor[] = [
-  investor("maya-chen", "Maya Chen", "michigan", "mia", "member", 2027, "Finance", true, true, false, "Covers industrials and quality compounders for MIA. Prefers positions she can defend in a weekly memo.", 4, ["Round 2 relative-performance note"]),
-  investor("elena-vasquez", "Elena Vasquez", "michigan", "mia", "leader", 2026, "Business economics", true, true, true, "MIA president. Publishes holdings so newer members can see sizing, not just tickers.", 3, ["Fall 2025 club captain"]),
+  investor("maya-chen", "Maya Chen", "michigan", "mia", "member", 2027, "Finance", true, true, false, "Covers industrials and quality compounders for MIA. Prefers positions she can defend in a weekly memo.", 4, []),
+  investor("elena-vasquez", "Elena Vasquez", "michigan", "mia", "leader", 2026, "Business economics", true, true, true, "MIA president. Publishes holdings so newer members can see sizing, not just tickers.", 3, []),
   investor("jordan-hale", "Jordan Hale", "michigan", "mia", "moderator", 2026, "Accounting", true, true, false, "Runs the club's drawdown review before each round close.", 18, []),
-  investor("priya-shah", "Priya Shah", "penn", "wharton-pmc", "leader", 2026, "Finance", true, true, true, "Builds sector-neutral cores and writes the club's benchmark memo.", 1, ["Spring 2026 individual champion"]),
+  investor("priya-shah", "Priya Shah", "penn", "wharton-pmc", "leader", 2026, "Finance", true, true, true, "Builds sector-neutral cores and writes the club's benchmark memo.", 1, []),
   investor("owen-blake", "Owen Blake", "penn", "wharton-pmc", "moderator", 2027, "Statistics", true, true, false, "Focuses on position limits and what does not belong in a three-week round.", 6, []),
-  investor("marcus-reed", "Marcus Reed", "texas", "texas-uic", "leader", 2026, "Energy finance", true, true, true, "Treats energy as a research edge, not a costume.", 5, ["Fall 2025 university record"]),
+  investor("marcus-reed", "Marcus Reed", "texas", "texas-uic", "leader", 2026, "Energy finance", true, true, true, "Treats energy as a research edge, not a costume.", 5, []),
   investor("lucia-nguyen", "Lucia Nguyen", "texas", "texas-uic", "moderator", 2027, "Finance", true, true, false, "Covers refiners and integrated oils.", 11, []),
-  investor("hannah-brooks", "Hannah Brooks", "virginia", "mcintire", "leader", 2026, "Commerce", true, true, true, "Low turnover, long memos, fewer trades.", 2, ["Consistency citation, Spring 2026"]),
+  investor("hannah-brooks", "Hannah Brooks", "virginia", "mcintire", "leader", 2026, "Commerce", true, true, true, "Low turnover, long memos, fewer trades.", 2, []),
   investor("samuel-ortiz", "Samuel Ortiz", "virginia", "mcintire", "moderator", 2027, "Commerce", true, true, false, "Tracks franchise quality and valuation discipline.", 9, []),
   investor("daniel-cho", "Daniel Cho", "nyu", "nyu-iic", "leader", 2026, "Finance", true, true, false, "Writes the group's weekly what-changed note.", 8, []),
   investor("amira-hassan", "Amira Hassan", "nyu", "nyu-iic", "moderator", 2027, "Economics", true, true, true, "Publishes a concentrated financials book and explains the risk plainly.", 14, []),
@@ -200,11 +200,6 @@ export const universityStandings: UniversityStanding[] = [
   uniStanding("nyu", 0.045, 0.002, 63.5, 0.62, 0.065, 0.54, 0.5, -0.01, 13, 6, 6),
   uniStanding("notre-dame", 0.0375, 0.001, 59.5, 0.51, 0.053, 0.61, 0.43, -0.017, 11, 7, 7),
   uniStanding("georgetown", 0.036, 0.0015, 58.9, 0.5, 0.054, 0.63, 0.44, -0.019, 10, 8, 8),
-];
-
-export const archivedChampions = [
-  { season: "Fall 2025", individual: "Priya Shah", club: "Wharton Portfolio Management Club", university: "Pennsylvania" },
-  { season: "Spring 2026", individual: "Hannah Brooks", club: "McIntire Investment Institute", university: "Virginia" },
 ];
 
 export const headlines: Headline[] = [
@@ -363,6 +358,3 @@ function buildSeries(start: number, daily: number[], startDate: string): SeriesP
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
-
-export const sampleHistoryNote =
-  "Prior-year boards are archived sample records. Opening Fall 2025 or Spring 2026 shows champions and does not invent a second live book.";

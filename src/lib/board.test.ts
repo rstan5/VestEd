@@ -82,7 +82,7 @@ test("filtering a window does not renumber its rank", () => {
   const ranks = new Map(round.map((item) => [item.investorId, item.window.rank]));
   const filtered = round.filter((item) => item.investorId.startsWith("s") || item.investorId.startsWith("m"));
   for (const item of sortBoard(filtered, "return")) assert.equal(item.window.rank, ranks.get(item.investorId));
-  assert.deepEqual([...ranks.values()].sort((a, b) => a - b), individualStandings.map((_, index) => index + 1));
+  assert.deepEqual([...ranks.values()].sort((a, b) => (a ?? Infinity) - (b ?? Infinity)), individualStandings.map((_, index) => index + 1));
 });
 
 test("a round with no stored results has no window rows", () => {

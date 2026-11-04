@@ -30,15 +30,18 @@ export type StandingMetrics = {
   rounds?: Readonly<Record<string, RoundResult>>;
 };
 
-/** Figures for the selected window. Rank is that window's official rank and never changes with a filter. */
+/**
+ * Figures for the selected window. Rank is that window's official rank and never changes with a filter.
+ * A null return or rank is unavailable or withheld on the server, not zero.
+ */
 export type WindowMetrics = {
-  return: number;
+  return: number | null;
   score: number | null;
   riskAdjusted: number | null;
   drawdown: number | null;
   diversification: number | null;
   consistency: number | null;
-  rank: number;
+  rank: number | null;
   previousRank: number | null;
 };
 
@@ -105,6 +108,6 @@ export function sortBoard<T extends { window: WindowMetrics }>(rows: T[], sort: 
       const order = compareMetric(a.window[sort], b.window[sort], METRIC_DIRECTION[sort]);
       if (order !== 0) return order;
     }
-    return a.window.rank - b.window.rank;
+    return compareMetric(a.window.rank, b.window.rank, "lower");
   });
 }
