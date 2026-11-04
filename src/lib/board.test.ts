@@ -92,3 +92,39 @@ test("a round with no stored results has no window rows", () => {
 test("sample drawdowns are stored as positive losses", () => {
   for (const item of individualStandings) assert.ok(item.drawdown === null || item.drawdown >= 0);
 });
+
+test("two stored rounds change the window numbers and sort basis by round id", () => {
+  const [roundOne, roundTwo, roundThree] = rounds.filter((round) => round.status === "final");
+  const stored = [
+    row("ana", { rank: 1, seasonReturn: 0.09, rounds: { [roundOne.id]: { return: 0.04, drawdown: 0.05 }, [roundTwo.id]: { return: -0.01, drawdown: 0.02 } } }),
+    row("ben", { rank: 2, seasonReturn: 0.07, rounds: { [roundOne.id]: { return: 0.01, drawdown: 0.01 }, [roundTwo.id]: { return: 0.06, drawdown: 0.07 } } }),
+    row("cy", { rank: 3, seasonReturn: 0.05, rounds: { [roundOne.id]: { return: 0.02, drawdown: 0.03 }, [roundTwo.id]: { return: 0.03, drawdown: 0.04 } } }),
+    row("dee", { rank: 4, seasonReturn: 0.02, rounds: { [roundTwo.id]: { return: 0.05, drawdown: null } } }),
+  ];
+
+  const first = applyWindow(stored, { kind: "round", round: roundOne })!;
+  const second = applyWindow(stored, { kind: "round", round: roundTwo })!;
+  assert.ok(first && second);
+
+  assert.deepEqual(sortBoard(first, "rank").map((item) => item.id), ["ana", "cy", "ben"], "only entries stored for the round appear");
+  assert.deepEqual(sortBoard(second, "rank").map((item) => item.id), ["ben", "dee", "cy", "ana"]);
+  assert.notDeepEqual(sortBoard(first, "rank").map((item) => item.id), sortBoard(second, "rank").map((item) => item.id));
+
+  assert.deepEqual(first.map((item) => [item.id, item.window.return]), [["ana", 0.04], ["ben", 0.01], ["cy", 0.02]]);
+  assert.deepEqual(second.map((item) => [item.id, item.window.return]), [["ana", -0.01], ["ben", 0.06], ["cy", 0.03], ["dee", 0.05]]);
+
+  assert.deepEqual(sortBoard(first, "drawdown").map((item) => item.id), ["ben", "cy", "ana"]);
+  assert.deepEqual(sortBoard(second, "drawdown").map((item) => item.id), ["ana", "cy", "ben", "dee"], "a missing round statistic sorts last");
+  for (const item of [...first, ...second]) {
+    assert.equal(item.window.score, null, "a statistic not stored for the round is not borrowed from the season");
+    assert.equal(item.window.previousRank, null);
+  }
+
+  assert.equal(applyWindow(stored, { kind: "round", round: roundThree }), null, "a round with no stored results stays unavailable");
+});
+
+test("the live-round return is not reused for a finalized round", () => {
+  const rows = [row("ana", { rank: 1, roundReturn: 0.05 }), row("ben", { rank: 2, roundReturn: 0.08 })];
+  assert.equal(applyWindow(rows, { kind: "round", round: finalRound }), null);
+  assert.deepEqual(sortBoard(applyWindow(rows, { kind: "round", round: liveRound })!, "rank").map((item) => item.id), ["ben", "ana"]);
+});

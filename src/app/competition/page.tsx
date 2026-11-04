@@ -68,7 +68,8 @@ export default function LeaderboardPage() {
   const round = rounds.find((item) => item.id === roundId);
   const boardWindow = useMemo<BoardWindow>(() => (round ? { kind: "round", round } : { kind: "season" }), [round]);
   const { rows: baseRows, missing } = useMemo(() => buildRows(board, standings), [board, standings]);
-  const allRows = useMemo(() => applyWindow(baseRows, boardWindow) ?? [], [baseRows, boardWindow]);
+  const windowRows = useMemo(() => applyWindow(baseRows, boardWindow), [baseRows, boardWindow]);
+  const allRows = useMemo(() => windowRows ?? [], [windowRows]);
   const useRound = boardWindow.kind === "round";
   const rows = useMemo(() => {
     const needle = query.toLowerCase().trim();
@@ -131,7 +132,7 @@ export default function LeaderboardPage() {
             title="No finalized results for the 2025–26 academic year"
             body="VestEd stores no finalized rounds from that year. Past champions appear here only from finalized results, so none are listed."
           />
-        ) : round && round.status === "final" ? (
+        ) : round && round.status === "final" && windowRows === null ? (
           <StatusNote
             kind="unavailable"
             title={`${round.name} results are not loaded`}
@@ -143,7 +144,7 @@ export default function LeaderboardPage() {
           <>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[13px] text-quiet">
               <p>
-                {rows.length} of {allRows.length} {noun} · {useRound && round ? `${round.name} window, provisional rank by round return` : "Season to date"} · as of {shortDate(seasonMeta.asOf)}
+                {rows.length} of {allRows.length} {noun} · {useRound && round ? `${round.name} window, ${round.status === "live" ? "provisional " : ""}rank by round return` : "Season to date"} · as of {shortDate(seasonMeta.asOf)}
               </p>
               <Tag kind="unavailable">Vs S&amp;P 500 unavailable</Tag>
             </div>
@@ -161,7 +162,7 @@ export default function LeaderboardPage() {
         )}
       </div>
 
-      {ready && season === seasonMeta.id && (!round || round.status === "live") ? (
+      {ready && season === seasonMeta.id && (!round || windowRows !== null) ? (
         <CompareTray rows={selected} onRemove={toggleCompare} onClear={() => setCompare([])} useRound={useRound} />
       ) : null}
     </div>

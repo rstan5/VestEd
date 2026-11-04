@@ -10,6 +10,7 @@ import {
   type ServerOrderResult,
   type StudentLedgerState,
 } from "./ledger/client";
+import { createStudentLedgerLoader, initialStudentLedger, studentLedgerFor, type KeyedStudentLedger } from "./ledger/student-loader";
 import { placeOrder, type OrderResult } from "./portfolio";
 import { canonicalLedger, securities, watchlist as defaultWatchlist } from "./sample-data";
 import { loadLedger, loadWatchlist, resetDemo, saveLedger, saveWatchlist } from "./storage";
@@ -40,8 +41,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [watchlist, setWatchlist] = useState<string[]>(defaultWatchlist);
   const [ready, setReady] = useState(false);
   const accountState = useAccountState();
-  const signedIn = accountState.status === "signed-in";
-  const [student, setStudent] = useState<StudentLedgerState>(signedIn ? { status: "loading" } : { status: "signed-out" });
+  const profileId = accountState.status === "signed-in" ? accountState.account.id : null;
+  const [keyedStudent, setKeyedStudent] = useState<KeyedStudentLedger>(() => initialStudentLedger(profileId));
+  const [loader] = useState(() => createStudentLedgerLoader(fetchStudentLedger, setKeyedStudent));
+  const student = studentLedgerFor(keyedStudent, profileId);
 
   useEffect(() => {
     setLedger(loadLedger());
@@ -49,18 +52,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     setReady(true);
   }, []);
 
-  const refreshStudent = useCallback(async () => {
-    setStudent(await fetchStudentLedger());
-  }, []);
+  const refreshStudent = useCallback(() => loader.refresh(), [loader]);
 
   useEffect(() => {
-    if (!signedIn) {
-      setStudent({ status: "signed-out" });
-      return;
-    }
-    setStudent({ status: "loading" });
-    void refreshStudent();
-  }, [signedIn, refreshStudent]);
+    void loader.select(profileId);
+    return () => loader.cancel();
+  }, [loader, profileId]);
 
   const view = useMemo(() => mayaView(ledger), [ledger]);
   const standings = useMemo(() => rankedStandings(view.standing), [view.standing]);

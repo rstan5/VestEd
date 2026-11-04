@@ -25,6 +25,7 @@ type Student = { id: string; client: Client };
 const run = randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
 const createdUsers: string[] = [];
 const createdInstruments: string[] = [];
+const createdSeasons: string[] = [];
 let skipReason: string | false = false;
 let admin: Client;
 let instrumentCount = 0;
@@ -133,6 +134,7 @@ describe("server ledger against local Supabase", () => {
     if (skipReason || !admin) return;
     await Promise.all(createdUsers.map((id) => admin.auth.admin.deleteUser(id)));
     if (createdInstruments.length) await admin.from("instruments").delete().in("id", createdInstruments);
+    if (createdSeasons.length) await admin.from("seasons").delete().in("id", createdSeasons);
   });
 
   it("season registration credits exactly $100000.00 once, and a round boundary does not refill or reset the book", async (t) => {
@@ -277,6 +279,72 @@ describe("server ledger against local Supabase", () => {
     assert.equal((again.data as unknown as OrderPayload).id, (own as unknown as OrderPayload).id);
   });
 
+  it("a replayed key resolves to the original order after the season closes and in a later season, without opening another book", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    const lou = await student("seasonreplay");
+    const ticker = await instrument();
+    const laterSeason = `test-${run.toLowerCase()}`;
+    const created = await admin.rpc("ledger_create_season", { p_id: laterSeason, p_name: `Ledger test ${run}`, p_starts_at: "2031-01-06T14:00:00.000Z", p_rounds: 1 });
+    assert.equal(created.error, null);
+    createdSeasons.push(laterSeason);
+    await quote(ticker, "20.00", "2026-11-10T14:00:00.000Z");
+    const key = `season-replay-${run}`;
+    const original = await acceptOk(lou, { instrument: ticker, quantity: 5, key, at: "2026-11-10T15:00:00.000Z" });
+    assert.equal(original.season_id, "fall-2026");
+
+    const registrations = async () => {
+      const { data, error } = await admin.from("registrations").select("season_id").eq("student_id", lou.id);
+      assert.equal(error, null);
+      return (data ?? []).map((row) => row.season_id);
+    };
+    const openingLines = async () => {
+      const { data, error } = await admin.from("cash_ledger").select("kind").eq("student_id", lou.id).eq("kind", "opening");
+      assert.equal(error, null);
+      return (data ?? []).length;
+    };
+
+    const moments: Array<[string, string]> = [
+      ["between seasons, with a later season scheduled", "2027-02-01T15:00:00.000Z"],
+      ["during the later season", "2031-01-07T15:00:00.000Z"],
+      ["after every season has closed", "2031-03-03T15:00:00.000Z"],
+    ];
+    for (const [label, at] of moments) {
+      const replay = await accept(lou, { instrument: ticker, quantity: 5, key, at });
+      assert.equal(replay.error, null, label);
+      assert.equal(replay.order?.id, original.id, label);
+      assert.equal(replay.order?.replayed, true, label);
+      assert.equal(replay.order?.season_id, "fall-2026", label);
+      assert.deepEqual({ ...replay.order!, replayed: false }, original, `${label}: the original receipt is returned`);
+
+      const conflict = await accept(lou, { instrument: ticker, quantity: 6, key, at });
+      assert.equal(conflict.error, "idempotency_conflict", label);
+      assert.equal(conflict.order, null, label);
+
+      assert.deepEqual(await registrations(), ["fall-2026"], `${label}: no later season is opened`);
+      assert.equal(await openingLines(), 1, `${label}: no second season credit`);
+    }
+
+    const fresh = await acceptOk(lou, { instrument: ticker, quantity: 1, key: `season-fresh-${run}`, at: "2031-01-07T15:00:00.000Z" });
+    assert.equal(fresh.season_id, laterSeason, "a new key in the later season still opens that season's book");
+    assert.deepEqual((await registrations()).sort(), ["fall-2026", laterSeason].sort());
+  });
+
+  it("concurrent first submits of one key create a single order", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    const max = await student("race");
+    const ticker = await instrument();
+    await quote(ticker, "20.00", "2026-11-10T14:00:00.000Z");
+    const key = `race-${run}`;
+    const results = await Promise.all(
+      Array.from({ length: 4 }, (_, index) => acceptOk(max, { instrument: ticker, quantity: 3, key, at: `2026-11-10T15:0${index}:00.000Z` })),
+    );
+    assert.equal(new Set(results.map((item) => item.id)).size, 1);
+    assert.equal(results.filter((item) => !item.replayed).length, 1, "exactly one call created the order");
+    const current = await book(max, "2026-11-10T15:05:00.000Z");
+    assert.equal(current.orders.length, 1);
+    assert.equal(valueLedgerBook(current).reservedCash, buyReserve(3, "20.00"));
+    assert.equal(current.cashLines.filter((line) => line.kind === "opening").length, 1);
+  });
   it("cancel before fill releases the reserve and blocks a later fill; a filled order cannot be cancelled", async (t) => {
     if (skipReason) return t.skip(skipReason);
     const [eve, mallory] = await Promise.all([student("cancel"), student("intruder")]);

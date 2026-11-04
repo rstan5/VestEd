@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(43);
 
 insert into auth.users (id, email, raw_user_meta_data, aud, role)
 values
@@ -122,6 +122,8 @@ reset role;
 
 select ok(not has_function_privilege('anon', 'public.published_holdings_source(uuid)', 'execute'), 'anon has no execute on the holdings source');
 select ok(not has_function_privilege('authenticated', 'public.published_holdings_source(uuid)', 'execute'), 'authenticated has no execute on the holdings source');
+select ok(not has_function_privilege('anon', 'public.ledger_replayed_order(uuid, text, text, text, numeric)', 'execute'), 'anon has no execute on the replay lookup');
+select ok(not has_function_privilege('authenticated', 'public.ledger_replayed_order(uuid, text, text, text, numeric)', 'execute'), 'authenticated has no execute on the replay lookup');
 select is(
   (select array_agg(attname::text order by attnum) from pg_attribute
    where attrelid = (select prorettype from pg_proc where oid = 'public.published_holdings_source(uuid)'::regprocedure)

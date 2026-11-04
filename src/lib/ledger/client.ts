@@ -20,10 +20,10 @@ async function failureMessage(response: Response, fallback: string): Promise<str
 }
 
 /** Reads the signed-in student's own book from the server. The session cookie names the account. */
-export async function fetchStudentLedger(): Promise<StudentLedgerState> {
+export async function fetchStudentLedger(signal?: AbortSignal): Promise<StudentLedgerState> {
   let response: Response;
   try {
-    response = await fetch("/api/portfolio", { cache: "no-store" });
+    response = await fetch("/api/portfolio", { cache: "no-store", signal });
   } catch {
     return { status: "unavailable", message: "The ledger could not be reached." };
   }
