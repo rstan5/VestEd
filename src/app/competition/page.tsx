@@ -3,22 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
-import { DEMO_INVESTOR_ID, MIN_CONSISTENCY_ROUNDS, MIN_DRAWDOWN_OBS, MIN_RISK_OBS, type Round, type Standing } from "@/lib/domain";
-import { applyWindow, sortBoard, type BoardSortKey, type BoardWindow, type StandingMetrics, type Windowed } from "@/lib/board";
+import { MIN_CONSISTENCY_ROUNDS, MIN_DRAWDOWN_OBS, MIN_RISK_OBS, type Round } from "@/lib/domain";
+import { applyWindow, sortBoard, type BoardSortKey, type BoardWindow, type Windowed } from "@/lib/board";
+import { buildRows, type Board, type BoardRow } from "@/lib/board-rows";
 import { percent, plainPercent, shortDate, tone } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio-state";
-import {
-  clubById,
-  clubStandings,
-  investorById,
-  rounds,
-  seasonMeta,
-  universities,
-  universityById,
-  universityStandings,
-} from "@/lib/sample-data";
+import { rounds, seasonMeta, universities } from "@/lib/sample-data";
 
-type Board = "individual" | "club" | "university";
 type SortKey = BoardSortKey;
 
 const boards: Array<{ id: Board; label: string; noun: string }> = [
@@ -44,16 +35,7 @@ const sorts: Array<{ id: SortKey; label: string }> = [
 
 const MAX_COMPARE = 3;
 
-type BaseRow = StandingMetrics & {
-  id: string;
-  name: string;
-  href: string;
-  affiliation: string;
-  universityId: string;
-  self: boolean;
-};
-
-type Row = Windowed<BaseRow>;
+type Row = Windowed<BoardRow>;
 
 export default function LeaderboardPage() {
   const { ready, standings } = usePortfolio();
@@ -67,7 +49,7 @@ export default function LeaderboardPage() {
 
   const round = rounds.find((item) => item.id === roundId);
   const boardWindow = useMemo<BoardWindow>(() => (round ? { kind: "round", round } : { kind: "season" }), [round]);
-  const { rows: baseRows, missing } = useMemo(() => buildRows(board, standings), [board, standings]);
+  const { rows: baseRows, missing } = useMemo(() => buildRows(board, { individual: standings }), [board, standings]);
   const windowRows = useMemo(() => applyWindow(baseRows, boardWindow), [baseRows, boardWindow]);
   const allRows = useMemo(() => windowRows ?? [], [windowRows]);
   const useRound = boardWindow.kind === "round";
@@ -366,77 +348,3 @@ function roundStatusLabel(round: Round): string {
   if (round.status === "live") return "Provisional";
   return "Scheduled";
 }
-
-function buildRows(board: Board, standings: Standing[]): { rows: BaseRow[]; missing: number } {
-  const rows: BaseRow[] = [];
-  let missing = 0;
-  if (board === "individual") {
-    for (const row of standings) {
-      const investor = investorById(row.investorId);
-      if (!investor) {
-        missing += 1;
-        continue;
-      }
-      const club = investor.clubId ? clubById(investor.clubId) : undefined;
-      rows.push({
-        ...metrics(row),
-        id: investor.id,
-        name: investor.name,
-        href: `/investors/${investor.id}`,
-        affiliation: `${universityById(investor.universityId)?.shortName ?? "University unavailable"} · ${club ? club.shortName : "Independent"}`,
-        universityId: investor.universityId,
-        self: investor.id === DEMO_INVESTOR_ID,
-      });
-    }
-  } else if (board === "club") {
-    for (const row of clubStandings) {
-      const club = clubById(row.clubId);
-      if (!club) {
-        missing += 1;
-        continue;
-      }
-      rows.push({
-        ...metrics(row),
-        id: club.id,
-        name: club.name,
-        href: `/clubs/${club.id}`,
-        affiliation: `${universityById(club.universityId)?.shortName ?? "University unavailable"} · ${row.eligibleMembers} eligible`,
-        universityId: club.universityId,
-        self: false,
-      });
-    }
-  } else {
-    for (const row of universityStandings) {
-      const university = universityById(row.universityId);
-      if (!university) {
-        missing += 1;
-        continue;
-      }
-      rows.push({
-        ...metrics(row),
-        id: university.id,
-        name: university.name,
-        href: `/universities/${university.id}`,
-        affiliation: `${university.conference} · ${row.eligibleInvestors} eligible`,
-        universityId: university.id,
-        self: false,
-      });
-    }
-  }
-  return { rows, missing };
-}
-
-function metrics(row: Pick<Standing, "seasonReturn" | "roundReturn" | "score" | "riskAdjusted" | "drawdown" | "diversification" | "consistency" | "rank" | "previousRank">) {
-  return {
-    seasonReturn: row.seasonReturn,
-    roundReturn: row.roundReturn,
-    score: row.score,
-    riskAdjusted: row.riskAdjusted,
-    drawdown: row.drawdown,
-    diversification: row.diversification,
-    consistency: row.consistency,
-    rank: row.rank,
-    previousRank: row.previousRank,
-  };
-}
-
