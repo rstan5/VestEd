@@ -253,7 +253,7 @@ function Holdings({ book, onTrade, onNewTrade }: { book: Book; onTrade: (ticker:
             <tr key={position.ticker}>
               <td>
                 <Link href={`/markets/${position.ticker}`} className="mono text-[15px] text-deep hover:underline">{position.ticker}</Link>
-                <div className="max-w-[160px] truncate text-[12px] text-quiet md:max-w-none">{position.name}</div>
+                <div className="hidden max-w-[160px] truncate text-[12px] text-quiet sm:block md:max-w-none">{position.name}</div>
               </td>
               <td className="num mono hidden sm:table-cell">{position.quantity}</td>
               <td className="num mono hidden md:table-cell">{money(position.averageCost)}</td>
