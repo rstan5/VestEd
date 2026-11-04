@@ -12,7 +12,7 @@ import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/
 import { studentDomainBook } from "@/lib/ledger/client";
 import type { Book } from "@/lib/portfolio";
 import { usePortfolio } from "@/lib/portfolio-state";
-import { currentRound, headlines, mayaSeries, seasonMeta } from "@/lib/sample-data";
+import { currentRound, headlines, seasonMeta } from "@/lib/sample-data";
 
 export default function HomePage() {
   const { standings, standing, student } = usePortfolio();
@@ -53,7 +53,8 @@ export default function HomePage() {
     : book
       ? nextAction(book, round.name, shortDate(round.end))
       : { title: "Valuation unavailable", body: "A holding has no stored quote, so your book cannot be valued right now.", href: "/portfolio", label: "Open Portfolio" };
-  const points = mayaSeries.map((point) => ({ label: point.date, value: point.equity }));
+  // No stored valuation history exists for the student's book yet; a sample investor's path is not theirs.
+  const points: Array<{ label: string; value: number }> = [];
   const holdingNews = headlines.find((item) => item.relevance === "holding");
 
   return (
@@ -114,18 +115,14 @@ export default function HomePage() {
         </aside>
 
         <section aria-labelledby="path-label" className="lg:col-start-1 lg:row-start-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 id="path-label" className="text-sm text-quiet">Season so far</h2>
-            <span className="mono text-[12px] text-quiet">Sample path · as of {shortDate(seasonMeta.asOf)}</span>
-          </div>
+          <h2 id="path-label" className="text-sm text-quiet">Season so far</h2>
           <div className="mt-3">
             {points.length > 1 ? (
-              <QuietLine points={points} label={`Sample equity path from ${money(points[0].value, 0)} to ${money(points[points.length - 1].value, 0)}`} />
+              <QuietLine points={points} label={`Your equity from ${money(points[0].value, 0)} to ${money(points[points.length - 1].value, 0)}`} />
             ) : (
-              <StatusNote kind="empty" compact title="No valuations yet" body="Your line appears after the first end-of-day valuation." />
+              <StatusNote kind="empty" compact title="No valuations yet" body="Your line appears after the first end-of-day valuation of your own book." />
             )}
           </div>
-          <p className="mt-3 text-[13px] leading-5 text-quiet">The path is the sample investor&apos;s demonstration series. Your book above is your own ledger at labeled sample quotes; the two do not reconcile.</p>
           <p className="mt-2 text-[13px] leading-5 text-quiet">
             <Tag kind="unavailable">Benchmark unavailable</Tag>
             <span className="ml-2">No licensed S&amp;P 500 total-return series is connected, so no comparison line is drawn.</span>
