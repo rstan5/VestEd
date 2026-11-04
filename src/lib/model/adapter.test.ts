@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import type { ProfessorContext } from "../ai";
+import { readyPack as context } from "../professor/test-fixtures";
 import { createModelAdapter } from "./adapter";
-
-const context: ProfessorContext = {
-  name: "Maya Chen",
-  equity: 100_000,
-  cashWeight: 0.1,
-  seasonReturn: 0.02,
-  relative: 0,
-  largest: { ticker: "CAT", weight: 0.2, sector: "Industrials" },
-  sectors: ["Industrials"],
-  holdings: ["CAT"],
-};
 
 let fetchCalls = 0;
 const realFetch = globalThis.fetch;
@@ -36,7 +25,7 @@ test("empty model key gives a labeled demonstration reply without a provider cal
     const reply = await model.reply("Am I diversified?", context);
     assert.equal(reply.status, "demonstration");
     assert.equal(reply.status === "demonstration" && reply.label, "Demonstration reply, not a model call");
-    assert.ok(reply.status === "demonstration" && reply.text.includes("CAT"));
+    assert.ok(reply.status === "demonstration" && reply.text.includes("MSFT"));
     assert.equal("model" in reply, false);
     assert.equal("provider" in reply, false);
   }

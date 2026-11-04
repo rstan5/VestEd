@@ -11,9 +11,9 @@ import { countdown, shortDate } from "@/lib/format";
 import { currentRound, rounds, seasonMeta } from "@/lib/sample-data";
 import { usePortfolio } from "@/lib/portfolio-state";
 
-// Routes on the student shell. Research, Professor, and the legacy club and university
-// pages keep the prototype chrome until their own rollout.
-const STUDENT_ROUTES = new Set(["/", "/portfolio", "/markets", "/competition", "/campus", "/login", "/signup", "/onboarding"]);
+// Routes on the student shell. Research and the legacy club and university pages keep the
+// prototype chrome until their own rollout.
+const STUDENT_ROUTES = new Set(["/", "/portfolio", "/markets", "/competition", "/campus", "/professor", "/login", "/signup", "/onboarding"]);
 const STUDENT_PREFIXES = ["/account/", "/students/", "/campus/", "/markets/"];
 
 function usesStudentShell(pathname: string): boolean {
@@ -68,7 +68,7 @@ function StudentShell({ pathname, children }: { pathname: string; children: Reac
               <span className="v-tag" title={`${seasonMeta.name}, ${round.name}. ${countdown(round.end, new Date(seasonMeta.asOf))} on the sample clock.`}>
                 {round.name} · closes {shortDate(round.end)}
               </span>
-              <Link href="/professor" className="v-nav">Professor</Link>
+              <Link href="/professor" className="v-nav" data-active={pathname === "/professor"} aria-current={pathname === "/professor" ? "page" : undefined}>Professor</Link>
             </span>
             <AccountMenu />
           </div>

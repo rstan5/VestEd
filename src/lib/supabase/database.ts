@@ -226,6 +226,17 @@ export type CurrentFinalizedRow = StandingFigureColumns & {
   finalized_at: string;
 };
 export type WatchlistRow = { student_id: string; instrument_id: string; added_at: string };
+export type AiSessionRow = { id: string; student_id: string; title: string; created_at: string; updated_at: string };
+export type AiMessageRow = {
+  id: number;
+  session_id: string;
+  student_id: string;
+  role: "student" | "professor";
+  body: string;
+  reply_status: "demonstration" | "unavailable" | null;
+  context: Json | null;
+  created_at: string;
+};
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 type ProfileUpdate = Partial<Pick<ProfileRow, "display_name" | "class_year" | "concentration" | "holdings_public" | "onboarded_at">>;
@@ -263,6 +274,8 @@ export type Database = {
       round_closures: ReadOnlyTable<RoundClosureRow>;
       finalized_results: ReadOnlyTable<FinalizedResultRow>;
       watchlists: ReadOnlyTable<WatchlistRow>;
+      ai_sessions: ReadOnlyTable<AiSessionRow>;
+      ai_messages: ReadOnlyTable<AiMessageRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -314,6 +327,10 @@ export type Database = {
       current_finalized_results: { Args: { p_season?: string | null }; Returns: CurrentFinalizedRow[] };
       watchlist_add: { Args: { p_instrument: string }; Returns: string };
       watchlist_remove: { Args: { p_instrument: string }; Returns: boolean };
+      professor_record_turn: {
+        Args: { p_student: string; p_session: string | null; p_question: string; p_reply_status: string; p_reply: string; p_context: Json };
+        Returns: string;
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

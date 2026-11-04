@@ -1,9 +1,9 @@
-import { professorReply, type ProfessorContext } from "../ai";
 import { hasCredential, type ProviderEnv } from "../credentials";
+import { demonstrationReply } from "../professor/demonstration";
+import type { ContextPack } from "../professor/types";
+import { DEMONSTRATION_LABEL, type ModelStatus } from "./status";
 
-export const DEMONSTRATION_LABEL = "Demonstration reply, not a model call";
-
-export type ModelStatus = "demonstration" | "unavailable";
+export { DEMONSTRATION_LABEL, type ModelStatus };
 
 export type ModelReply =
   | { status: "demonstration"; label: typeof DEMONSTRATION_LABEL; text: string }
@@ -11,7 +11,7 @@ export type ModelReply =
 
 export interface ModelAdapter {
   status: ModelStatus;
-  reply(question: string, context: ProfessorContext): Promise<ModelReply>;
+  reply(question: string, context: ContextPack): Promise<ModelReply>;
 }
 
 const demonstrationAdapter: ModelAdapter = {
@@ -19,7 +19,7 @@ const demonstrationAdapter: ModelAdapter = {
   reply: async (question, context) => ({
     status: "demonstration",
     label: DEMONSTRATION_LABEL,
-    text: professorReply(question, context),
+    text: demonstrationReply(question, context),
   }),
 };
 
