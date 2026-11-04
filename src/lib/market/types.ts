@@ -10,11 +10,26 @@ export type MarketResult<T> = Sample<T> | Unavailable;
 export type MarketQuote = {
   ticker: string;
   name: string;
-  type: "stock" | "etf";
+  type: InstrumentType;
   sector: string;
   price: string;
   previousClose: string;
   change: string;
+};
+
+export type InstrumentType = "stock" | "etf";
+
+export type MarketListing = {
+  ticker: string;
+  name: string;
+  type: InstrumentType;
+  sector: string;
+};
+
+export type MarketProfile = MarketListing & {
+  description: string;
+  volume: string;
+  marketCap: string;
 };
 
 export type HistoryBar = { index: number; close: string };
@@ -27,6 +42,9 @@ export type MarketHeadline = {
 };
 
 export interface MarketAdapter {
+  /** US stocks and ETFs whose ticker or name matches. An empty query lists the whole universe. */
+  search(query: string): Promise<MarketResult<MarketListing[]>>;
+  profile(ticker: string): Promise<MarketResult<MarketProfile>>;
   quote(ticker: string): Promise<MarketResult<MarketQuote>>;
   history(ticker: string): Promise<MarketResult<HistoryBar[]>>;
   news(ticker?: string): Promise<MarketResult<MarketHeadline[]>>;

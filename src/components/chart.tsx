@@ -115,3 +115,35 @@ export function AllocationBar({ items, cash }: { items: Array<{ label: string; w
     </figure>
   );
 }
+
+/** A restrained price path. The caller supplies the label and any caption about where the values came from. */
+export function PriceLine({ values, label }: { values: number[]; label: string }) {
+  if (values.length < 2) return null;
+  const width = 720;
+  const height = 240;
+  const top = 14;
+  const bottom = height - 14;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const x = (index: number) => (index / (values.length - 1)) * width;
+  const y = (value: number) => top + (1 - (value - min) / span) * (bottom - top);
+  const line = values.map((value, index) => `${index === 0 ? "M" : "L"} ${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join(" ");
+  const area = `${line} L ${width} ${height} L 0 ${height} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="block h-[180px] w-full md:h-[240px]" role="img" aria-label={label}>
+      <defs>
+        <linearGradient id="price-wash" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#d8ebd5" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#d8ebd5" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[top, (top + bottom) / 2, bottom].map((line) => (
+        <line key={line} x1="0" x2={width} y1={line} y2={line} stroke="#edf0eb" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      ))}
+      <path d={area} fill="url(#price-wash)" />
+      <path d={line} fill="none" stroke="#247448" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}

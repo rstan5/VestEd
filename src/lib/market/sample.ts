@@ -1,6 +1,16 @@
 import Decimal from "decimal.js";
 import { headlines, securities } from "../sample-data";
-import { SAMPLE_LABEL, type HistoryBar, type MarketAdapter, type MarketHeadline, type MarketQuote, type MarketResult } from "./types";
+import type { Security } from "../domain";
+import {
+  SAMPLE_LABEL,
+  type HistoryBar,
+  type MarketAdapter,
+  type MarketHeadline,
+  type MarketListing,
+  type MarketProfile,
+  type MarketQuote,
+  type MarketResult,
+} from "./types";
 
 const HISTORY_LENGTH = 30;
 
@@ -13,6 +23,41 @@ const unknown = (ticker: string) => ({
 function find(ticker: string) {
   const symbol = ticker.trim().toUpperCase();
   return { symbol, security: securities.find((item) => item.ticker === symbol) };
+}
+
+function listing(security: Security): MarketListing {
+  return { ticker: security.ticker, name: security.name, type: security.type, sector: security.sector };
+}
+
+// Exact ticker first, then ticker prefix, then a name or sector match.
+function matchRank(security: Security, needle: string): number | null {
+  if (needle === "") return 3;
+  const ticker = security.ticker.toLowerCase();
+  if (ticker === needle) return 0;
+  if (ticker.startsWith(needle)) return 1;
+  if (security.name.toLowerCase().includes(needle)) return 2;
+  if (security.sector.toLowerCase().includes(needle)) return 3;
+  return null;
+}
+
+function sampleSearch(query: string): MarketResult<MarketListing[]> {
+  const needle = query.trim().toLowerCase();
+  const ranked = securities
+    .map((security) => ({ security, rank: matchRank(security, needle) }))
+    .filter((item): item is { security: Security; rank: number } => item.rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.security.ticker.localeCompare(b.security.ticker));
+  return sample(ranked.map((item) => listing(item.security)));
+}
+
+function sampleProfile(ticker: string): MarketResult<MarketProfile> {
+  const { symbol, security } = find(ticker);
+  if (!security) return unknown(symbol);
+  return sample({
+    ...listing(security),
+    description: security.description,
+    volume: String(security.volume),
+    marketCap: String(security.marketCap),
+  });
 }
 
 function sampleQuote(ticker: string): MarketResult<MarketQuote> {
@@ -61,6 +106,8 @@ function sampleNews(ticker?: string): MarketResult<MarketHeadline[]> {
 }
 
 export const sampleMarketAdapter: MarketAdapter = {
+  search: async (query) => sampleSearch(query),
+  profile: async (ticker) => sampleProfile(ticker),
   quote: async (ticker) => sampleQuote(ticker),
   history: async (ticker) => sampleHistory(ticker),
   news: async (ticker) => sampleNews(ticker),

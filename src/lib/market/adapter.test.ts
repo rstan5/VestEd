@@ -66,9 +66,35 @@ test("empty market key returns labeled sample quote, history, and news", async (
   assert.equal(fetchCalls, 0);
 });
 
+test("empty market key searches and profiles the labeled sample universe", async () => {
+  const market = createMarketAdapter({});
+  const all = await market.search("");
+  assert.equal(all.status, "sample");
+  assert.ok(all.status === "sample" && all.data.length > 0 && all.data.every((item) => item.type === "stock" || item.type === "etf"));
+  assertHonest(all);
+
+  const byTicker = await market.search(" aap ");
+  assert.equal(byTicker.status === "sample" && byTicker.data[0]?.ticker, "AAPL");
+  const byName = await market.search("vanguard");
+  assert.deepEqual(byName.status === "sample" && byName.data.map((item) => item.ticker), ["VTI"]);
+  const exactFirst = await market.search("spy");
+  assert.equal(exactFirst.status === "sample" && exactFirst.data[0]?.ticker, "SPY");
+  const none = await market.search("no such company");
+  assert.equal(none.status, "sample");
+  assert.deepEqual(none.status === "sample" && none.data, []);
+  assertHonest(none);
+
+  const profile = await market.profile("spy");
+  assert.equal(profile.status, "sample");
+  assert.equal(profile.status === "sample" && profile.data.type, "etf");
+  assert.match(profile.status === "sample" ? profile.data.volume : "", /^\d+$/);
+  assertHonest(profile);
+  assert.equal(fetchCalls, 0);
+});
+
 test("unknown tickers are unavailable, not invented", async () => {
   const market = createMarketAdapter({});
-  for (const result of [await market.quote("ZZZZ"), await market.history("ZZZZ")]) {
+  for (const result of [await market.quote("ZZZZ"), await market.history("ZZZZ"), await market.profile("ZZZZ")]) {
     assert.equal(result.status, "unavailable");
     assertHonest(result);
   }
@@ -76,7 +102,13 @@ test("unknown tickers are unavailable, not invented", async () => {
 
 test("a market key without a connected vendor is unavailable and calls nothing", async () => {
   const market = createMarketAdapter({ MARKET_DATA_PROVIDER: "massive", MARKET_DATA_API_KEY: "placeholder" });
-  for (const result of [await market.quote("AAPL"), await market.history("AAPL"), await market.news("AAPL")]) {
+  for (const result of [
+    await market.search(""),
+    await market.profile("AAPL"),
+    await market.quote("AAPL"),
+    await market.history("AAPL"),
+    await market.news("AAPL"),
+  ]) {
     assert.equal(result.status, "unavailable");
     assert.ok(result.status === "unavailable" && result.reason.length > 0);
     assertHonest(result);

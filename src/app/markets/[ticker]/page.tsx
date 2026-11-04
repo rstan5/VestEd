@@ -1,108 +1,196 @@
-"use client";
-
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { LineChart } from "@/components/chart";
-import { OrderTicket } from "@/components/ticket";
-import { EmptyState, Pill } from "@/components/ui";
-import { compactMoney, money, number, percent, shortDate } from "@/lib/format";
-import { usePortfolio } from "@/lib/portfolio-state";
-import { headlines, securities } from "@/lib/sample-data";
+import { PriceLine } from "@/components/chart";
+import { SecurityActions } from "@/components/markets/security-actions";
+import { WatchlistProvider } from "@/components/markets/watchlist";
+import { StatusNote, Tag } from "@/components/ui";
+import { compactMoney, money, number, percent, signedMoney, tone } from "@/lib/format";
+import { createMarketAdapter } from "@/lib/market/adapter";
+import type { HistoryBar, MarketHeadline, MarketResult } from "@/lib/market/types";
+import { loadSecurity, type SecurityStats } from "@/lib/market/views";
+import { getWatchlistState } from "@/lib/watchlist/session";
 
-const periods = [
-  { id: "1M", points: 22 },
-  { id: "3M", points: 66 },
-  { id: "Season", points: 90 },
-];
+export const dynamic = "force-dynamic";
 
-export default function SecurityPage() {
-  const params = useParams<{ ticker: string }>();
-  const ticker = params.ticker?.toUpperCase();
-  const security = securities.find((item) => item.ticker === ticker);
-  const { book, watchlist, toggleWatch } = usePortfolio();
-  const [period, setPeriod] = useState("3M");
-  const chart = useMemo(() => {
-    if (!security) return [];
-    const count = periods.find((item) => item.id === period)?.points ?? 66;
-    let price = security.price / 1.08;
-    return Array.from({ length: count }, (_, index) => {
-      price *= 1 + Math.sin(index / 5) * 0.004 + 0.0006;
-      return { label: String(index), value: index === count - 1 ? security.price : price, benchmark: security.price * 0.96 };
-    });
-  }, [security, period]);
-
-  if (!security) {
-    return <EmptyState title="Security not in the sample universe" body="This prototype trades a fixed list of US stocks and ETFs. Search Markets for a listed ticker." />;
-  }
-
-  const related = headlines.filter((item) => item.tickers.includes(security.ticker));
-  const owned = book.positions.find((position) => position.ticker === security.ticker);
+export default async function SecurityPage({ params }: { params: Promise<{ ticker: string }> }) {
+  const { ticker: raw } = await params;
+  const [view, watchlist] = await Promise.all([loadSecurity(createMarketAdapter(), decodeURIComponent(raw)), getWatchlistState()]);
+  const profile = view.profile.status === "sample" ? view.profile.data : null;
+  const quote = view.quote.status === "sample" ? view.quote.data : null;
+  const stats = view.stats.status === "sample" ? view.stats.data : null;
+  const ratio = stats?.changeRatio ? Number(stats.changeRatio) : null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link className="text-sm text-primary" href="/markets">All markets</Link>
-          <h1 className="serif text-4xl text-forest">{security.ticker} · {security.name}</h1>
-          <p className="mt-1 text-sm text-muted">{security.sector} · {security.type.toUpperCase()} · sample quote</p>
+    <WatchlistProvider initial={watchlist}>
+      <Link href="/markets" className="inline-flex items-center gap-1.5 text-sm text-quiet underline-offset-4 hover:text-forest hover:underline">
+        <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden="true"><path d="M7.5 3 4.5 6l3 3" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+        Markets
+      </Link>
+
+      <header className="mt-5 flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 text-sm text-quiet">
+            <span className="mono text-deep">{view.ticker}</span>
+            {profile ? <span>{profile.type === "etf" ? "ETF" : "Stock"} · {profile.sector}</span> : null}
+          </p>
+          <h1 className="serif mt-1 text-[36px] leading-[1.1] text-forest md:text-[44px]">{profile?.name ?? quote?.name ?? view.ticker}</h1>
         </div>
-        <div className="text-right">
-          <div className="serif text-4xl text-forest">{money(security.price)}</div>
-          <div className={security.dayChange >= 0 ? "up" : "down"}>{percent(security.dayChange)} day</div>
+        <div className="md:text-right" data-testid="security-price">
+          {quote ? (
+            <>
+              <p className="serif text-[44px] leading-none tracking-tight text-deep">{money(Number(quote.price))}</p>
+              <p className={`mono mt-2 text-sm ${ratio === null ? "text-quiet" : tone(ratio)}`}>
+                {signedMoney(Number(quote.change))}
+                {ratio === null ? null : ` (${percent(ratio, 2)})`} vs previous sample close
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-quiet">Quote unavailable</p>
+          )}
         </div>
+      </header>
+
+      <p className="mt-4 flex flex-wrap items-center gap-2 text-[13px] leading-5 text-quiet" data-testid="security-honesty">
+        {view.quote.status === "sample" ? <Tag kind="sample">Sample quote</Tag> : <Tag kind="unavailable">Unavailable</Tag>}
+        <span>Not live or delayed vendor data. No vendor or quote time is attached.</span>
+      </p>
+
+      {view.quote.status === "unavailable" ? (
+        <div className="mt-8">
+          <StatusNote
+            kind="unavailable"
+            title={`${view.ticker} is unavailable`}
+            body={view.quote.reason}
+            action={<Link href="/markets" className="v-btn quiet small">Search Markets</Link>}
+          />
+        </div>
+      ) : (
+        <div className="mt-8">
+          <SecurityActions ticker={view.ticker} tradable />
+        </div>
+      )}
+
+      <div className="mt-12 grid gap-x-14 gap-y-12 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-12">
+          <PriceChart ticker={view.ticker} history={view.history} />
+          {profile ? (
+            <section aria-labelledby="about-heading">
+              <h2 id="about-heading" className="text-sm font-medium text-forest">About {view.ticker}</h2>
+              <p className="mt-2 max-w-[640px] text-[15px] leading-7 text-ink">{profile.description}</p>
+              <p className="mt-2 text-[12px] text-quiet">Sample description written for this build.</p>
+            </section>
+          ) : null}
+        </div>
+        <Statistics stats={view.stats} />
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Pill>Sample, not live</Pill>
-        <Pill>{number(security.holders)} VestEd portfolios</Pill>
-        <button className="btn secondary" type="button" onClick={() => toggleWatch(security.ticker)}>
-          {watchlist.includes(security.ticker) ? "Remove from watchlist" : "Add to watchlist"}
-        </button>
+
+      <TickerNews ticker={view.ticker} news={view.news} />
+    </WatchlistProvider>
+  );
+}
+
+function PriceChart({ ticker, history }: { ticker: string; history: MarketResult<HistoryBar[]> }) {
+  const values = history.status === "sample" ? history.data.map((bar) => Number(bar.close)) : [];
+  return (
+    <section aria-labelledby="chart-heading" data-testid="security-chart">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="chart-heading" className="text-sm font-medium text-forest">Price path</h2>
+        {history.status === "sample" ? <Tag kind="sample">{values.length} sample bars</Tag> : <Tag kind="unavailable">Unavailable</Tag>}
       </div>
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_0.7fr]">
-        <div className="card p-4">
-          <div className="mb-3 flex gap-2">
-            {periods.map((item) => (
-              <button key={item.id} className={period === item.id ? "btn" : "btn secondary"} type="button" onClick={() => setPeriod(item.id)}>{item.id}</button>
-            ))}
-          </div>
-          <LineChart points={chart} />
-          <p className="mt-2 text-xs text-muted">Illustrative path ending at the sample quote. It is not a stored price history from a vendor.</p>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <Fact label="Previous close" value={money(security.previousClose)} />
-            <Fact label="Volume" value={number(security.volume)} />
-            <Fact label="Market cap" value={compactMoney(security.marketCap)} />
-            <Fact label="Your weight" value={owned ? `${(owned.weight * 100).toFixed(1)}%` : "Not held"} />
-          </dl>
-          <p className="mt-4 text-sm leading-6">{security.description}</p>
-        </div>
-        <div className="space-y-4">
-          <OrderTicket security={security} />
-          <div className="card p-4 text-sm">
-            <div className="text-muted">Buying power</div>
-            <div className="serif text-2xl text-forest">{money(book.cash)}</div>
-            <p className="mt-2 text-muted">Buying power is cash. Margin is not enabled.</p>
-          </div>
-        </div>
-      </section>
-      <section className="card p-4">
-        <h2 className="serif text-2xl text-forest">Related sample news</h2>
-        {related.length === 0 ? <p className="mt-2 text-sm text-muted">No sample brief is attached to this ticker. That is an empty state, not a claim that nothing happened.</p> : (
-          <ul className="mt-3 space-y-3">
-            {related.map((item) => (
-              <li key={item.id}>
-                <a className="text-forest hover:underline" href={item.url}>{item.title}</a>
-                <div className="text-xs text-muted">{item.publisher} · {shortDate(item.publishedAt)} · sample</div>
-                <p className="text-sm text-muted">{item.summary}</p>
-              </li>
-            ))}
-          </ul>
+      <div className="mt-4">
+        {history.status === "unavailable" ? (
+          <StatusNote kind="unavailable" compact title="Chart unavailable" body={history.reason} />
+        ) : values.length < 2 ? (
+          <StatusNote kind="empty" compact title="Not enough bars to draw" body="The chart appears once at least two bars exist." />
+        ) : (
+          <>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+              <PriceLine values={values} label={`${ticker} sample path of ${values.length} bars from ${money(values[0])} to ${money(values[values.length - 1])}`} />
+              <div className="mono flex flex-col justify-between py-1 text-right text-[11px] text-quiet" aria-hidden="true">
+                <span>{money(Math.max(...values))}</span>
+                <span>{money(Math.min(...values))}</span>
+              </div>
+            </div>
+            <div className="mono mt-2 flex justify-between pr-16 text-[11px] text-quiet" aria-hidden="true">
+              <span>Oldest bar</span>
+              <span>Sample price</span>
+            </div>
+            <p className="mt-3 max-w-[640px] text-[13px] leading-5 text-quiet">
+              An illustrative path that ends at the sample price. It is not a record of trading, and the bars carry no dates.
+            </p>
+          </>
         )}
-      </section>
+      </div>
+    </section>
+  );
+}
+
+function Statistics({ stats }: { stats: MarketResult<SecurityStats> }) {
+  return (
+    <section aria-labelledby="stats-heading" data-testid="security-stats" className="lg:pt-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="stats-heading" className="text-sm font-medium text-forest">Statistics</h2>
+        {stats.status === "sample" ? <Tag kind="sample">Sample</Tag> : <Tag kind="unavailable">Unavailable</Tag>}
+      </div>
+      {stats.status === "unavailable" ? (
+        <div className="mt-4">
+          <StatusNote kind="unavailable" compact title="Statistics unavailable" body={stats.reason} />
+        </div>
+      ) : (
+        <dl className="mt-3 divide-y divide-rule border-y border-rule text-sm">
+          <Stat label="Sample price" value={money(Number(stats.data.price))} />
+          <Stat label="Previous sample close" value={money(Number(stats.data.previousClose))} />
+          <Stat label="Change" value={stats.data.changeRatio === null ? signedMoney(Number(stats.data.change)) : `${signedMoney(Number(stats.data.change))} · ${percent(Number(stats.data.changeRatio), 2)}`} />
+          <Stat label={`High, ${stats.data.bars} bars`} value={stats.data.rangeHigh === null ? "Unavailable" : money(Number(stats.data.rangeHigh))} />
+          <Stat label={`Low, ${stats.data.bars} bars`} value={stats.data.rangeLow === null ? "Unavailable" : money(Number(stats.data.rangeLow))} />
+          <Stat label="Volume" value={stats.data.volume === null ? "Unavailable" : number(Number(stats.data.volume))} />
+          <Stat label="Market cap" value={stats.data.marketCap === null ? "Unavailable" : compactMoney(Number(stats.data.marketCap))} />
+        </dl>
+      )}
+      <p className="mt-3 text-[12px] leading-5 text-quiet">Fixture figures for practice. They do not describe a real trading session.</p>
+    </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 py-3">
+      <dt className="text-quiet">{label}</dt>
+      <dd className="mono text-right text-forest">{value}</dd>
     </div>
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-xs uppercase tracking-[0.08em] text-muted">{label}</div><div className="mono mt-1">{value}</div></div>;
+function TickerNews({ ticker, news }: { ticker: string; news: MarketResult<MarketHeadline[]> }) {
+  return (
+    <section aria-labelledby="ticker-news-heading" className="mt-16 border-t border-rule pt-10" data-testid="security-news">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 id="ticker-news-heading" className="serif text-[28px] text-forest">Sample briefs on {ticker}</h2>
+        {news.status === "sample" ? <Tag kind="sample">Written for this build</Tag> : <Tag kind="unavailable">Unavailable</Tag>}
+      </div>
+      <p className="mt-1 max-w-[640px] text-[13px] leading-5 text-quiet">Teaching notes, not a news wire. No publisher or publication time is attached.</p>
+      <div className="mt-6">
+        {news.status === "unavailable" ? (
+          <StatusNote kind="unavailable" compact title="News unavailable" body={news.reason} />
+        ) : news.data.length === 0 ? (
+          <StatusNote kind="empty" compact title={`No sample brief mentions ${ticker}`} body="That is an empty desk, not a claim that nothing happened." />
+        ) : (
+          <ul className="max-w-[720px] divide-y divide-rule border-y border-rule">
+            {news.data.map((item) => (
+              <li key={item.id} className="py-5">
+                <h3 className="serif text-xl leading-snug text-forest">{item.title}</h3>
+                <p className="mt-1.5 text-sm leading-6 text-quiet">{item.summary}</p>
+                {item.tickers.length > 1 ? (
+                  <p className="mt-2 flex flex-wrap gap-2 text-[12px]">
+                    {item.tickers.filter((other) => other !== ticker).map((other) => (
+                      <Link key={other} href={`/markets/${other}`} className="mono text-primary underline-offset-4 hover:underline">{other}</Link>
+                    ))}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
 }

@@ -225,6 +225,7 @@ export type CurrentFinalizedRow = StandingFigureColumns & {
   edition: number;
   finalized_at: string;
 };
+export type WatchlistRow = { student_id: string; instrument_id: string; added_at: string };
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 type ProfileUpdate = Partial<Pick<ProfileRow, "display_name" | "class_year" | "concentration" | "holdings_public" | "onboarded_at">>;
@@ -261,6 +262,7 @@ export type Database = {
       standing_entries: ReadOnlyTable<StandingEntryRow>;
       round_closures: ReadOnlyTable<RoundClosureRow>;
       finalized_results: ReadOnlyTable<FinalizedResultRow>;
+      watchlists: ReadOnlyTable<WatchlistRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -310,6 +312,8 @@ export type Database = {
       standings_correct_result: { Args: { p_result: string; p_changes: Json; p_reason: string; p_at: string }; Returns: string };
       latest_standings: { Args: { p_season: string }; Returns: LatestStandingRow[] };
       current_finalized_results: { Args: { p_season?: string | null }; Returns: CurrentFinalizedRow[] };
+      watchlist_add: { Args: { p_instrument: string }; Returns: string };
+      watchlist_remove: { Args: { p_instrument: string }; Returns: boolean };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

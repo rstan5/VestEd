@@ -11,10 +11,10 @@ import { countdown, shortDate } from "@/lib/format";
 import { currentRound, rounds, seasonMeta } from "@/lib/sample-data";
 import { usePortfolio } from "@/lib/portfolio-state";
 
-// Routes on the student shell. Markets, Campus, and Professor keep the prototype
-// chrome until their own rollout.
-const STUDENT_ROUTES = new Set(["/", "/portfolio", "/competition", "/campus", "/login", "/signup", "/onboarding"]);
-const STUDENT_PREFIXES = ["/account/", "/students/", "/campus/"];
+// Routes on the student shell. Research, Professor, and the legacy club and university
+// pages keep the prototype chrome until their own rollout.
+const STUDENT_ROUTES = new Set(["/", "/portfolio", "/markets", "/competition", "/campus", "/login", "/signup", "/onboarding"]);
+const STUDENT_PREFIXES = ["/account/", "/students/", "/campus/", "/markets/"];
 
 function usesStudentShell(pathname: string): boolean {
   return STUDENT_ROUTES.has(pathname) || STUDENT_PREFIXES.some((prefix) => pathname.startsWith(prefix));

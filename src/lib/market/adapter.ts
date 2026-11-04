@@ -13,6 +13,8 @@ const BENCHMARK_UNAVAILABLE: Unavailable = {
 };
 
 const notConnectedAdapter: MarketAdapter = {
+  search: async () => ({ ...NOT_CONNECTED }),
+  profile: async () => ({ ...NOT_CONNECTED }),
   quote: async () => ({ ...NOT_CONNECTED }),
   history: async () => ({ ...NOT_CONNECTED }),
   news: async () => ({ ...NOT_CONNECTED }),
