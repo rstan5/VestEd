@@ -11,11 +11,12 @@ import { CASH_DRAG_THRESHOLD } from "@/lib/domain";
 import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/format";
 import { studentDomainBook } from "@/lib/ledger/client";
 import type { Book } from "@/lib/portfolio";
-import { usePortfolio } from "@/lib/portfolio-state";
+import { usePortfolio, useStudentLedger } from "@/lib/portfolio-state";
 import { currentRound, headlines, seasonMeta } from "@/lib/sample-data";
 
 export default function HomePage() {
-  const { standings, standing, student } = usePortfolio();
+  const { standings, standing } = usePortfolio();
+  const student = useStudentLedger();
   const accountState = useAccountState();
   const round = currentRound();
 

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React, { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ScoreBasisNote } from "@/components/score-basis";
 import { applyWindow, sortBoard, type RoundResult } from "./board";
 import { buildRows, sampleBoardSources, serverWindowRows, type Board, type BoardSources } from "./board-rows";
 import { canonicalLedger, clubStandings, individualStandings, rounds, sampleRoundResults, universityStandings } from "./sample-data";
@@ -124,4 +127,44 @@ test("server window rows keep the server's rank, withheld components, and order 
   assert.deepEqual(sortBoard(rows, "rank").map((row) => row.id), ["small", "big", "pair"], "an unranked group sorts after ranked ones");
   const filtered = sortBoard(rows.filter((row) => row.universityId === "u1"), "drawdown");
   assert.deepEqual(filtered.map((row) => [row.id, row.window.rank]), [["big", 2]], "filtering out the leader does not renumber");
+});
+
+test("a two-component server score stays Partial and lists its components through the adapter and the score cell", () => {
+  const figures = { universityId: "u1", clubId: null, riskAdjusted: null, drawdown: null, consistency: null, eligibleStudents: null, institutional: true, withheld: [] };
+  const payload = {
+    universities: [{ id: "u1", shortName: "U1" }],
+    clubs: [],
+    windows: {
+      season: {
+        kind: "provisional" as const,
+        asOf: "2026-11-04T21:00:00.000Z",
+        boards: {
+          individual: [
+            { ...figures, entrantId: "ana", name: "Ana", rank: 1, return: 0.03, score: 71.25, diversification: 0.6, scoreLabel: "Partial", included: ["diversification", "return"] },
+            { ...figures, entrantId: "ben", name: "Ben", rank: 2, return: 0.01, score: 64.5, diversification: 0.5, drawdown: 0.02, scoreLabel: "Official", included: ["return", "drawdown", "diversification"] },
+            { ...figures, entrantId: "cy", name: "Cy", rank: null, return: null, score: null, diversification: null, scoreLabel: "Unavailable", included: [] },
+          ],
+          club: [],
+          university: [],
+        },
+      },
+    },
+  };
+  const rows = serverWindowRows(payload, "individual", "season", "ana")!;
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  assert.deepEqual(byId.get("ana")!.scoreBasis, { label: "Partial", included: ["return", "diversification"] });
+  assert.deepEqual(byId.get("ben")!.scoreBasis, { label: "Official", included: ["return", "drawdown", "diversification"] });
+  assert.equal(byId.get("ana")!.window.score, 71.25, "the server's score is shown as published, not recomputed");
+
+  // tsx compiles components with the classic JSX transform, which reads a global React.
+  Object.assign(globalThis, { React });
+  const partial = renderToStaticMarkup(createElement(ScoreBasisNote, { basis: byId.get("ana")!.scoreBasis }));
+  assert.match(partial, /data-score-label="Partial"/);
+  assert.match(partial, />Partial</);
+  assert.match(partial, /Uses Return, Diversification/);
+
+  const official = renderToStaticMarkup(createElement(ScoreBasisNote, { basis: byId.get("ben")!.scoreBasis }));
+  assert.doesNotMatch(official, />Partial</);
+  assert.match(official, /Uses Return, Drawdown, Diversification/);
+  assert.equal(renderToStaticMarkup(createElement(ScoreBasisNote, { basis: byId.get("cy")!.scoreBasis })), "");
 });

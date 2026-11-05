@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { computeStandings, groupComponent, individualStandings, officialRanks, type StudentWindowInput } from "./compute";
 import { currentEditions, lifetimeRecords, type FinalizedResult } from "./lifetime";
+import { entryPayloads, standingsFor, type SeasonInputs } from "./store";
 import { windowPath, type BookHistory } from "./window";
 
 const clubs = [
@@ -251,4 +252,47 @@ test("window path is unavailable when the close is unavailable or the base is st
 
   const late = windowPath(history({ registeredAt: "2026-09-15T14:00:00.000Z" }), round);
   assert.equal(late.participated, false);
+});
+
+test("a fill with no later in-window valuation leaves the close unavailable, withholds group coverage, and is not finalized as complete", () => {
+  const round = { start: "2026-09-14T04:00:00.000Z", end: "2026-10-05T04:00:00.000Z" };
+  const base = snap("2026-09-11T20:30:00.000Z", "100000.00");
+  const close = snap("2026-09-20T20:30:00.000Z", "104000.00");
+  // Recorded after the round end, so it cannot stand in for the close.
+  const afterEnd = snap("2026-10-06T20:30:00.000Z", "90000.00");
+  const filled = history({ executedAt: ["2026-09-25T14:00:00.000Z"], snapshots: [base, close, afterEnd] });
+
+  const path = windowPath(filled, round);
+  assert.deepEqual([path.participated, path.points, path.holdings, path.cashWeight], [true, null, null, null]);
+  assert.ok(windowPath(history({ executedAt: ["2026-09-18T14:00:00.000Z"], snapshots: [base, close] }), round).points, "a fill before the close is covered by it");
+  assert.ok(windowPath(history({ executedAt: ["2026-10-06T14:00:00.000Z"], snapshots: [base, close] }), round).points, "a fill after the window end does not affect it");
+
+  const inputs = (lastHistory: BookHistory): SeasonInputs => ({
+    season: { id: "fall-2026", name: "Fall 2026", startsAt: "2026-08-24T04:00:00.000Z", endsAt: "2026-12-18T05:00:00.000Z" },
+    rounds: [],
+    students: [
+      { studentId: "m1", name: "M1", universityId: "u1", clubId: "c1", history: history({ snapshots: [base, close] }) },
+      { studentId: "m2", name: "M2", universityId: "u1", clubId: "c1", history: history({ snapshots: [base, close] }) },
+      { studentId: "m3", name: "M3", universityId: "u1", clubId: "c1", history: lastHistory },
+    ],
+    clubs: [{ id: "c1", name: "Club One", universityId: "u1" }],
+    universities: [{ id: "u1", name: "University One" }],
+  });
+
+  // The rows finalizeRound writes for this round.
+  const stale = entryPayloads(standingsFor(inputs(filled), round));
+  const m3 = stale.individual.find((row) => row.entrant_id === "m3")!;
+  assert.deepEqual([m3.return_pct, m3.rank, m3.score, m3.diversification, m3.score_label], [null, null, null, null, "Unavailable"]);
+  for (const board of ["club", "university"] as const) {
+    const [group] = stale[board];
+    assert.equal(group.return_pct, null, `the ${board} return is withheld, not a two-member average`);
+    assert.equal(group.rank, null);
+    assert.ok(group.withheld.includes("return") && group.withheld.includes("diversification"));
+  }
+  const groups = standingsFor(inputs(filled), round);
+  assert.deepEqual([groups.club[0].components.return.reason, groups.club[0].components.return.covered], ["incomplete_coverage", 2]);
+
+  const complete = entryPayloads(standingsFor(inputs(history({ executedAt: ["2026-09-18T14:00:00.000Z"], snapshots: [base, close] })), round));
+  assert.ok(Math.abs((complete.club[0].return_pct as number) - 0.04) < 1e-9, "with a valuation after the fill the club is complete");
+  assert.equal(complete.club[0].rank, 1);
 });

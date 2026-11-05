@@ -7,7 +7,7 @@ import type { Security } from "@/lib/domain";
 import { dateTime, money } from "@/lib/format";
 import { buyReserve, SIMULATION_COST } from "@/lib/ledger/book";
 import type { OrderPayload } from "@/lib/ledger/types";
-import { usePortfolio } from "@/lib/portfolio-state";
+import { usePortfolio, useStudentLedger } from "@/lib/portfolio-state";
 
 export function OrderTicket({ security }: { security: Security }) {
   const { book, submitOrder } = usePortfolio();
@@ -100,7 +100,8 @@ function newOrderKey(): string {
 
 /** Places an order on the signed-in student's server book. The fill never comes from this screen. */
 export function TradeSheet({ initialTicker, onClose }: { initialTicker: string; onClose: () => void }) {
-  const { student, placeServerOrder } = usePortfolio();
+  const { placeServerOrder } = usePortfolio();
+  const student = useStudentLedger();
   const [ticker, setTicker] = useState(initialTicker);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [quantity, setQuantity] = useState("1");

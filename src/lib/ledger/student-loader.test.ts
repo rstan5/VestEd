@@ -16,7 +16,8 @@ function deferredFetch() {
   return { calls, fetchLedger };
 }
 
-function harness() {
+/** By default a page that reads the book is mounted, as on Home or Portfolio. */
+function harness({ reader = true } = {}) {
   const { calls, fetchLedger } = deferredFetch();
   const published: KeyedStudentLedger[] = [];
   let latest: KeyedStudentLedger = initialStudentLedger(null);
@@ -24,6 +25,7 @@ function harness() {
     latest = value;
     published.push(value);
   });
+  if (reader) loader.attach();
   return { calls, loader, published, view: (profileId: string | null) => studentLedgerFor(latest, profileId) };
 }
 
@@ -104,4 +106,48 @@ test("an overlapping refresh for the same account keeps only the newest response
   calls[1].resolve({ status: "unavailable", message: "stale" });
   await older;
   assert.equal(view("student-a"), fresh);
+});
+
+test("first hydration of a page that does not read the book, such as Professor, never requests it", async () => {
+  const { calls, loader, view } = harness({ reader: false });
+  await loader.select("unregistered-student");
+  assert.equal(calls.length, 0, "GET /api/portfolio opens and credits a season book, so it must not be called");
+  assert.equal(view("unregistered-student").status, "loading");
+  await loader.select("unregistered-student");
+  assert.equal(calls.length, 0, "a repeated select for the same profile still makes no request");
+});
+
+test("a page that reads the book loads it once, whether it mounts before or after the profile is known", async () => {
+  const early = harness({ reader: false });
+  const detach = early.loader.attach();
+  assert.equal(early.calls.length, 0, "no request without a signed-in profile");
+  const pending = early.loader.select("student-a");
+  assert.equal(early.calls.length, 1);
+  early.calls[0].resolve(readyFor("student-a"));
+  await pending;
+  detach();
+  early.loader.attach();
+  assert.equal(early.calls.length, 1, "navigating back to a reader does not reload an already loaded book");
+  assert.equal(bookOwner(early.view("student-a")), "student-a");
+
+  const late = harness({ reader: false });
+  await late.loader.select("student-b");
+  assert.equal(late.calls.length, 0);
+  late.loader.attach();
+  assert.equal(late.calls.length, 1, "opening Portfolio after Professor loads the book");
+  late.calls[0].resolve(readyFor("student-b"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(bookOwner(late.view("student-b")), "student-b");
+});
+
+test("after every reader detaches, switching accounts requests nothing until a reader mounts again", async () => {
+  const { calls, loader } = harness({ reader: false });
+  const detach = loader.attach();
+  const first = loader.select("student-a");
+  calls[0].resolve(readyFor("student-a"));
+  await first;
+  detach();
+  detach();
+  await loader.select("student-b");
+  assert.equal(calls.length, 1, "a detach called twice does not leave a phantom reader");
 });

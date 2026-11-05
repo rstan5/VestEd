@@ -2,12 +2,12 @@
 
 import { useCallback, useState } from "react";
 import { TradeSheet } from "@/components/ticket";
-import { usePortfolio } from "@/lib/portfolio-state";
+import { useStudentLedger } from "@/lib/portfolio-state";
 import { WatchButton, WatchlistNotice } from "./watchlist";
 
 /** Watch and trade controls for one symbol. Trades go to the signed-in student's server book. */
 export function SecurityActions({ ticker, tradable }: { ticker: string; tradable: boolean }) {
-  const { student } = usePortfolio();
+  const student = useStudentLedger();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const held = student.status === "ready" ? student.valuation.positions.find((position) => position.instrumentId === ticker) ?? null : null;

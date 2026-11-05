@@ -12,7 +12,7 @@ export type StoredSnapshot = {
 export type BookHistory = {
   registeredAt: string;
   startingCapital: string;
-  /** Execution times. A fill after the last known valuation makes that valuation stale as a window base. */
+  /** Execution times. A fill after the last known valuation makes that valuation stale as a window base or close. */
   executedAt: string[];
   snapshots: StoredSnapshot[];
 };
@@ -33,7 +33,8 @@ const nyDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", 
  * registration, so the registration credit is the first known valuation. A round window starts
  * from the last known valuation at or before its open. Snapshots are reduced to the last one per
  * New York session date, so intervals are daily however often the job runs. When the latest snapshot
- * at the close is unavailable, the whole window is unavailable rather than valued at zero.
+ * at the close is unavailable, or a known fill inside the window came after it, the whole window is
+ * unavailable rather than valued at stale or zero equity.
  */
 export function windowPath(history: BookHistory, window: { start: string | null; end: string }): WindowPath {
   const registeredAt = Date.parse(history.registeredAt);
@@ -64,6 +65,8 @@ export function windowPath(history: BookHistory, window: { start: string | null;
   if (inside.length === 0) return unavailable;
   const close = known(inside[inside.length - 1]);
   if (!close) return unavailable;
+  // A fill after the closing valuation means the close no longer shows the book's holdings or equity.
+  if (history.executedAt.some((at) => Date.parse(at) > close.at && Date.parse(at) <= end)) return unavailable;
 
   const daily = new Map<string, Known>();
   for (const item of inside) {

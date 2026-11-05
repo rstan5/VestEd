@@ -1,4 +1,4 @@
-import { DEMO_INVESTOR_ID, type ClubStanding, type Standing, type UniversityStanding } from "./domain";
+import { DEMO_INVESTOR_ID, type ClubStanding, type ScoreComponentKey, type Standing, type UniversityStanding } from "./domain";
 import type { StandingMetrics, WindowMetrics, Windowed } from "./board";
 import type { StandingsPayload } from "./standings/load";
 import { clubById, clubStandings, investorById, sampleRoundResults, universityById, universityStandings } from "./sample-data";
@@ -15,7 +15,34 @@ export type BoardIdentity = {
   self: boolean;
   /** Group components the server withheld for too few students or incomplete coverage. */
   withheld?: string[];
+  /** The server's score status and the components that score used. Group and sample rows carry none. */
+  scoreBasis?: ScoreBasis | null;
 };
+
+export type ScoreBasis = { label: "Official" | "Partial" | "Unavailable"; included: ScoreComponentKey[] };
+
+const SCORE_COMPONENTS: Record<ScoreComponentKey, string> = {
+  return: "Return",
+  risk: "Risk-adjusted",
+  drawdown: "Drawdown",
+  diversification: "Diversification",
+  consistency: "Consistency",
+  relative: "Vs S&P 500",
+};
+
+const SCORE_LABELS: ReadonlySet<string> = new Set<ScoreBasis["label"]>(["Official", "Partial", "Unavailable"]);
+
+/** Reads the published label and included components. A row without a known label has no basis. */
+export function scoreBasis(label: string | null, included: string[]): ScoreBasis | null {
+  if (label === null || !SCORE_LABELS.has(label)) return null;
+  const keys = (Object.keys(SCORE_COMPONENTS) as ScoreComponentKey[]).filter((key) => included.includes(key));
+  return { label: label as ScoreBasis["label"], included: keys };
+}
+
+/** Display names of the components a score used, in weight order. */
+export function scoreComponentNames(basis: ScoreBasis): string[] {
+  return basis.included.map((key) => SCORE_COMPONENTS[key]);
+}
 
 export type BoardRow = StandingMetrics & BoardIdentity & { href: string };
 
@@ -158,6 +185,7 @@ export function serverWindowRows(
       universityId: row.universityId ?? "",
       self: board === "individual" && row.entrantId === viewerId,
       withheld: row.withheld,
+      scoreBasis: scoreBasis(row.scoreLabel, row.included),
       window: metrics,
     };
   });

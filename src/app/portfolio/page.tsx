@@ -11,7 +11,7 @@ import { dateTime, money, percent, plainPercent, shortDate, signedMoney, tone } 
 import { studentDomainBook, type StudentLedgerState } from "@/lib/ledger/client";
 import type { LedgerBook, LedgerOrder, LedgerOrderStatus } from "@/lib/ledger/types";
 import { sectorWeights, type Book } from "@/lib/portfolio";
-import { usePortfolio } from "@/lib/portfolio-state";
+import { usePortfolio, useStudentLedger } from "@/lib/portfolio-state";
 import { rounds, seasonMeta, securities } from "@/lib/sample-data";
 
 type Tab = "holdings" | "orders" | "activity";
@@ -24,7 +24,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
 
 export default function PortfolioPage() {
   const accountState = useAccountState();
-  const { student } = usePortfolio();
+  const student = useStudentLedger();
   if (accountState.status === "signed-in") return <StudentPortfolio student={student} />;
   return <SamplePortfolio />;
 }

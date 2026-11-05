@@ -24,8 +24,6 @@ type Store = {
   standing: ReturnType<typeof mayaView>["standing"];
   seasonReturn: number;
   standings: ReturnType<typeof rankedStandings>;
-  /** The signed-in student's own server ledger, keyed to their profile id. Never the sample book. */
-  student: StudentLedgerState;
   refreshStudent: () => Promise<void>;
   placeServerOrder: (input: { instrument: string; side: "buy" | "sell"; quantity: number; idempotencyKey: string }) => Promise<ServerOrderResult>;
   cancelOrder: (orderId: string) => Promise<ServerOrderResult>;
@@ -34,7 +32,13 @@ type Store = {
   reset: () => void;
 };
 
-const PortfolioContext = createContext<Store | null>(null);
+type ProviderValue = Store & {
+  /** The signed-in student's own server ledger, keyed to their profile id. Never the sample book. */
+  student: StudentLedgerState;
+  attachStudent: () => () => void;
+};
+
+const PortfolioContext = createContext<ProviderValue | null>(null);
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [ledger, setLedger] = useState<Ledger>(canonicalLedger);
@@ -53,6 +57,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshStudent = useCallback(() => loader.refresh(), [loader]);
+  const attachStudent = useCallback(() => loader.attach(), [loader]);
 
   useEffect(() => {
     void loader.select(profileId);
@@ -62,7 +67,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const view = useMemo(() => mayaView(ledger), [ledger]);
   const standings = useMemo(() => rankedStandings(view.standing), [view.standing]);
 
-  const store: Store = {
+  const store: ProviderValue = {
     ready,
     ledger,
     watchlist,
@@ -71,6 +76,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     seasonReturn: view.seasonReturn,
     standings,
     student,
+    attachStudent,
     refreshStudent,
     placeServerOrder: async (input) => {
       const result = await submitServerOrder(input);
@@ -110,8 +116,23 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   return <PortfolioContext.Provider value={store}>{children}</PortfolioContext.Provider>;
 }
 
-export function usePortfolio(): Store {
+function useProviderValue(): ProviderValue {
   const store = useContext(PortfolioContext);
   if (!store) throw new Error("usePortfolio must be used inside PortfolioProvider");
   return store;
+}
+
+export function usePortfolio(): Store {
+  return useProviderValue();
+}
+
+/**
+ * The signed-in student's own server book. The first read opens the season registration and credits
+ * starting capital, so only pages that show or trade the book call this. The book is not loaded for a
+ * page that does not, such as Professor.
+ */
+export function useStudentLedger(): StudentLedgerState {
+  const { student, attachStudent } = useProviderValue();
+  useEffect(() => attachStudent(), [attachStudent]);
+  return student;
 }

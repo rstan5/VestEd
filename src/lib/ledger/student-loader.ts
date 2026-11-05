@@ -5,9 +5,16 @@ export type KeyedStudentLedger = { profileId: string | null; state: StudentLedge
 
 export type FetchStudentLedger = (signal: AbortSignal) => Promise<StudentLedgerState>;
 
+/**
+ * Loading the book (GET /api/portfolio) opens the season registration and credits starting capital on first
+ * read, so it runs only while a page that shows the book is attached. A page that never attaches, such as
+ * Professor, never opens a book.
+ */
 export type StudentLedgerLoader = {
-  /** Switches to a profile (null when signed out) and loads its book. Any earlier request is dropped. */
+  /** Switches to a profile (null when signed out). Any earlier request is dropped. Loads only while a reader is attached. */
   select: (profileId: string | null) => Promise<void>;
+  /** Marks a reader of the book as mounted, loading the selected profile's book if it has not been requested. Returns the detach. */
+  attach: () => () => void;
   /** Reloads the selected profile's book. An overlapping earlier refresh is dropped. */
   refresh: () => Promise<void>;
   /** Drops any request in flight without publishing. */
@@ -29,10 +36,14 @@ export function createStudentLedgerLoader(fetchLedger: FetchStudentLedger, publi
   let current: string | null = null;
   let generation = 0;
   let inFlight: AbortController | null = null;
+  let readers = 0;
+  /** The profile whose latest load has started and not been dropped. */
+  let requested: string | null = null;
 
   function invalidate(): number {
     inFlight?.abort();
     inFlight = null;
+    requested = null;
     generation += 1;
     return generation;
   }
@@ -41,6 +52,7 @@ export function createStudentLedgerLoader(fetchLedger: FetchStudentLedger, publi
     const profileId = current;
     const ticket = invalidate();
     if (profileId === null) return;
+    requested = profileId;
     const controller = new AbortController();
     inFlight = controller;
     let state: StudentLedgerState;
@@ -62,7 +74,17 @@ export function createStudentLedgerLoader(fetchLedger: FetchStudentLedger, publi
       current = profileId;
       invalidate();
       publish(initialStudentLedger(profileId));
-      return load();
+      return readers > 0 ? load() : Promise.resolve();
+    },
+    attach() {
+      readers += 1;
+      if (current !== null && requested !== current) void load();
+      let attached = true;
+      return () => {
+        if (!attached) return;
+        attached = false;
+        readers -= 1;
+      };
     },
     refresh: load,
     cancel() {

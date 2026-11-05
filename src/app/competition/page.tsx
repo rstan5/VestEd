@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ScoreBasisNote } from "@/components/score-basis";
 import { LoadingBlock, Movement, Skeleton, StatusNote, Tag } from "@/components/ui";
 import { useAccountState } from "@/lib/account/context";
 import { MIN_CONSISTENCY_ROUNDS, MIN_DRAWDOWN_OBS, MIN_RISK_OBS, type Round } from "@/lib/domain";
@@ -315,7 +316,7 @@ function BoardTable({ rows, compare, onToggle, board }: { rows: Row[]; compare: 
                   <span className="block text-[12px] text-quiet">{row.affiliation}</span>
                 </td>
                 <td className="num"><Stat row={row} field="return" render={(value) => percent(value)} toned /></td>
-                <td className="num hidden md:table-cell"><Stat row={row} field="score" render={(score) => score.toFixed(1)} /></td>
+                <td className="num hidden md:table-cell"><ScoreStat row={row} /></td>
                 <td className="num hidden lg:table-cell"><Stat row={row} field="riskAdjusted" render={(risk) => risk.toFixed(2)} /></td>
                 <td className="num hidden md:table-cell"><Stat row={row} field="drawdown" render={(loss) => plainPercent(loss)} /></td>
                 <td className="num hidden lg:table-cell"><Stat row={row} field="diversification" render={(score) => `${Math.round(score * 100)}`} /></td>
@@ -422,7 +423,7 @@ function CompareTray({ rows, onRemove, onClear, useRound }: { rows: Row[]; onRem
             <tbody>
               <CompareLine label="Official rank" rows={rows} render={(row) => <RankCell row={row} />} />
               <CompareLine label={useRound ? "Round return" : "Season return"} rows={rows} render={(row) => <Stat row={row} field="return" render={(value) => percent(value)} toned />} />
-              <CompareLine label="Score" rows={rows} render={(row) => <Stat row={row} field="score" render={(score) => score.toFixed(1)} />} />
+              <CompareLine label="Score" rows={rows} render={(row) => <ScoreStat row={row} />} />
               <CompareLine label="Risk-adjusted" rows={rows} render={(row) => <Stat row={row} field="riskAdjusted" render={(risk) => risk.toFixed(2)} />} />
               <CompareLine label="Drawdown" rows={rows} render={(row) => <Stat row={row} field="drawdown" render={(loss) => plainPercent(loss)} />} />
               <CompareLine label="Diversification" rows={rows} render={(row) => <Stat row={row} field="diversification" render={(score) => `${Math.round(score * 100)}`} />} />
@@ -455,7 +456,7 @@ function Methodology() {
       <div className="absolute left-0 z-40 mt-2 w-[min(calc(100vw-40px),420px)] md:left-auto md:right-0 rounded-2xl border border-rule bg-paper p-5 text-[13px] leading-6 text-quiet shadow-[0_18px_40px_rgba(16,59,43,0.08)]">
         <p className="text-forest">The rank column is the official rank. Sorting and filtering change the view, never the number.</p>
         <ul className="mt-3 list-disc space-y-1 pl-4">
-          <li>Score weights: return 30, risk-adjusted 20, drawdown 15, diversification 15, consistency 10, vs benchmark 10. Missing parts are dropped and the rest renormalized.</li>
+          <li>Score weights: return 30, risk-adjusted 20, drawdown 15, diversification 15, consistency 10, vs benchmark 10. Missing parts are dropped and the rest renormalized. A score with fewer than three parts reads Partial, and every score lists the parts it uses.</li>
           <li>Drawdown is the largest loss from a peak, shown as a positive number. A smaller loss ranks higher.</li>
           <li>Choosing a round ranks by that round&apos;s window. Statistics not stored for the round read Not enough data.</li>
           <li>Drawdown needs {MIN_DRAWDOWN_OBS} return intervals, risk-adjusted needs {MIN_RISK_OBS}, consistency needs {MIN_CONSISTENCY_ROUNDS} finalized rounds. Below that it reads Not enough data, not zero.</li>
@@ -491,6 +492,15 @@ function Stat({ row, field, render, toned }: { row: Row; field: FigureKey; rende
   const value = row.window[field];
   if (value === null) return row.withheld?.includes(field) ? <Withheld /> : <Insufficient />;
   return <span className={`mono ${toned ? tone(value) : ""}`}>{render(value)}</span>;
+}
+
+function ScoreStat({ row }: { row: Row }) {
+  return (
+    <>
+      <Stat row={row} field="score" render={(score) => score.toFixed(1)} />
+      {row.window.score !== null ? <ScoreBasisNote basis={row.scoreBasis} /> : null}
+    </>
+  );
 }
 
 function RankCell({ row }: { row: Row }) {
