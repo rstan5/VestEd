@@ -1,6 +1,6 @@
 # VestEd
 
-VestEd is a collegiate investment competition prototype: individual, club, and university standings, a simulated portfolio, and an AI Professor that explains the sample book. No real money. No live market, news, or model integration.
+VestEd is a collegiate investment competition prototype: individual, club, and university standings, a simulated paper portfolio, and a Professor workspace. No real money. No live market, news, or model integration, and no deployed site. See [What is real, what is sample, what is blocked](#what-is-real-what-is-sample-what-is-blocked).
 
 ## Run locally
 
@@ -13,7 +13,7 @@ npx next dev --hostname 127.0.0.1 --port 3100
 
 `npm run dev` runs the same command with Turbopack. The app binds to `127.0.0.1:3100` only. Never start it with `0.0.0.0` or on port 3000.
 
-Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Home, Portfolio, onboarding, account pages, and student profiles need a signed-in student, so start local Supabase first (below). A signed-in student's Home and Portfolio book is their own server ledger, keyed to their profile id; signed-out visitors see the labeled sample demo, whose trades persist in this browser under `vested.demo.ledger.v1` (**Reset sample book** in the account menu restores it).
+Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Home, Portfolio, onboarding, account pages, and student profiles need a signed-in student, so start local Supabase first (below). A signed-in student's Home and Portfolio book is their own server ledger, keyed to their profile id; signed-out visitors see the labeled sample demo, whose trades persist in this browser under `vested.demo.ledger.v2` (**Reset sample book** in the account menu restores it).
 
 ```bash
 npm test
@@ -79,7 +79,7 @@ npm run campus:review -- affiliation <affiliation-id> verified|rejected
 
 `src/lib/campus/campus.integration.test.ts` runs these rules against local Supabase when it is up and `.env.local` has its keys. When the stack is down, its cases are reported as skipped. `supabase/tests/campus_rls.test.sql` covers the same rules in pgTAP.
 
-The sample club and university directories (`/clubs`, `/universities`) and the standings boards still use sample data.
+The sample club and university directories (`/clubs`, `/universities`) still use sample data. Signed-in standings come from the server. See [What is real, what is sample, what is blocked](#what-is-real-what-is-sample-what-is-blocked).
 
 ## Ledger
 
@@ -95,6 +95,7 @@ JOBS_NOW=2026-11-03T15:00:00Z npx tsx scripts/run-jobs.ts --store postgres   # o
 ## Environment
 
 `.env.example` lists every variable with an empty value. Copy it to `.env.local`, which git ignores. Provider keys (`MARKET_DATA_API_KEY`, `AI_API_KEY`) stay empty until licensed credentials exist; with no key, market data and AI replies are unavailable or labeled samples. `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never commit it and never give it a `NEXT_PUBLIC_` prefix.
+
 ## Adapters and jobs
 
 Market, benchmark, and model access go through adapters. None of them makes a network call in this build.
@@ -114,27 +115,69 @@ npm run jobs:once                          # one pass over the labeled sample fi
 npx tsx scripts/run-jobs.ts --every 60     # local timer; Ctrl-C stops it
 ```
 
-The fixture store is in-memory and labeled sample. `--store postgres` runs the fill pass against the local Postgres ledger with the service role from `.env.local`; valuation and round-close stores are not Postgres-backed yet. The session clock knows regular New York hours and DST; the Postgres store reads holidays and early closes from `market_calendar`.
-## What works
+The fixture store is in-memory and labeled sample. `--store postgres` runs fills, valuations, round close, and provisional standings against the local Postgres ledger with the service role from `.env.local`. Pass `--season <id>` with a disposable season: without it, every open season is processed, and a round past its end is finalized permanently. The session clock knows regular New York hours and DST; the Postgres store reads holidays and early closes from `market_calendar`.
 
-- Dashboard, portfolio, markets, security pages, competition boards, investor and club profiles, universities, research, and the professor chat.
-- Buy and sell validation against cash, position size, and duplicate order ids. Fills use the sample quote plus or minus one cent.
-- Sorting, search, university filter, period switch, and side-by-side compare on the boards.
-- Scoring helpers for return, drawdown minimums, diversification floor, and risk-adjusted minimums.
+## Testing
 
-## What is mocked
+Unit and integration tests use Node's built-in runner. Typecheck and lint are the other gate commands.
 
-- Quotes, charts on security pages, news, and standings. Quotes that value the ledger are stored and labeled sample.
-- The sample club and university directories under `/clubs` and `/universities`. Real student clubs are under `/campus`.
-- AI Professor replies. They are deterministic templates tagged Demonstration.
-- Prior-year pages show archived champions only.
+```bash
+npm test                                   # every src/**/*.test.ts file
+npx tsc --noEmit --incremental false
+npm run lint
+```
 
-## Not implemented
+Files named `*.integration.test.ts` run against local Supabase when it is up and `.env.local` has its keys. When the stack is down they are reported as skipped, never passed, so check for `skipped 0` before treating a run as database proof.
 
-- Email-ownership checks for university addresses. A reviewer decides verification instead.
-- Club and university standings from real memberships.
-- A market-data vendor, corporate actions, and a real trading calendar beyond the stored 2026-2027 calendar.
-- Valuation and round-close jobs against Postgres.
-- A model API. Leave `AI_API_KEY` empty. See `.env.example`.
+Database permission tests are pgTAP files in `supabase/tests`. They need the stack running:
 
-Read `PRODUCT_SPEC.md` for scoring rules and `ARCHITECTURE.md` for the production boundary. The next milestone is the database and a server ledger, not a vendor key in the browser.
+```bash
+npx supabase test db
+```
+
+Browser journeys and accessibility checks use Playwright with `@axe-core/playwright`, in `e2e/`. Start both services first. The Playwright config never starts a server of its own, and it runs one worker so only one browser is open.
+
+```bash
+npx supabase start --exclude realtime,studio,edge-runtime,logflare,vector,imgproxy,supavisor,postgres-meta
+npx next dev --hostname 127.0.0.1 --port 3100    # in another terminal
+npm run test:e2e
+npx supabase stop                                # and stop the dev server when done
+```
+
+| Spec | What it proves |
+| --- | --- |
+| `e2e/signup.spec.ts` | A new student registers, finishes setup with no club, lands on Home as an individual, and signs out. |
+| `e2e/order.spec.ts` | A buy is accepted and queued, nothing fills before the 15-minute wait, it survives a reload, and cancel releases the reserve. |
+| `e2e/rankings.spec.ts` | Provisional standings published through the server publish path show the same ranks as `/api/standings`. Search, sort, and reload do not change a rank, a client rank write gets 405, and the header shows the server's current round. |
+| `e2e/a11y.spec.ts` | Home, Portfolio, and Standings have no serious or critical axe violations (WCAG 2.2 AA tags, including color contrast). Every tab stop shows a focus ring, the trade sheet traps focus and returns it on Escape, and nothing animates when reduced motion is requested. |
+
+The journeys create disposable `e2e-*@example.com` students with the local service role and delete them afterwards. The rankings journey also deletes the provisional standings versions it published. It never closes or finalizes a round. The Chromium build Playwright uses must already be installed. `@playwright/test` is pinned to a version that matches the cached browser, so no download is needed.
+
+## What is real, what is sample, what is blocked
+
+Everything runs on this machine against a disposable local Supabase stack. Nothing is deployed, and no hosted environment exists.
+
+### Real (stored in local Postgres, enforced on the server)
+
+- Student accounts, sessions, onboarding, profiles, and privacy settings. Holdings stay private unless the student publishes them.
+- University affiliation requests, reviewer decisions, clubs, membership approval, moderators, and disputes.
+- The paper ledger: $100,000.00 per season, whole-share long-only orders, the 15-minute fill wait, DAY expiry, cancel, reserves, and idempotent replay.
+- Valuation snapshots, provisional standings, round close, insert-only finalized results, and lifetime records, all written by the jobs in `src/lib/jobs` and `src/lib/standings`. Club and university scores are equal-weight.
+- The current round shown in the header and on Home, read from the server's `rounds` table.
+- The watchlist and saved Professor conversations, stored per student.
+
+### Sample (labeled as sample wherever a student sees it)
+
+- Every quote, price chart, and news item. Stored quotes have `source = 'sample'`, and the market adapter returns `sample` or `unavailable`, never `live`.
+- The signed-out Standings board, its two sample round datasets, and the signed-out demo book. These are not finalized history.
+- The legacy club and university directories under `/clubs` and `/universities`. Real clubs live under `/campus`.
+- Professor replies. They are deterministic templates tagged Demonstration. They are not a model call.
+
+### Blocked (needs something this build does not have)
+
+- **Market license.** No licensed market-data vendor is connected, so there are no live or delayed quotes. The S&P 500 total-return benchmark is unavailable, so benchmark-relative return is not scored. `MARKET_DATA_API_KEY` stays empty.
+- **Model credential.** No AI provider key exists. `AI_API_KEY` stays empty, and the Professor stays in demonstration mode.
+- **Production email.** Mail goes only to local Mailpit on port 3133. No production email delivery is configured, and a university address is not confirmed by email. A reviewer decides verification instead.
+- **Previous-year history.** No finalized results exist for the 2025–26 academic year. The Standings page shows an empty state for it and lists no champions.
+
+Read `PRODUCT_SPEC.md` for scoring rules and `ARCHITECTURE.md` for the production boundary.

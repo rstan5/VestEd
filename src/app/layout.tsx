@@ -4,6 +4,8 @@ import { Shell } from "@/components/shell";
 import { AccountProvider } from "@/lib/account/context";
 import { getAccountState } from "@/lib/account/session";
 import { PortfolioProvider } from "@/lib/portfolio-state";
+import { RoundProvider } from "@/lib/season/context";
+import { getCurrentRound } from "@/lib/season/session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,14 +29,16 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const account = await getAccountState();
+  const [account, round] = await Promise.all([getAccountState(), getCurrentRound()]);
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} antialiased`}>
         <AccountProvider value={account}>
-          <PortfolioProvider>
-            <Shell>{children}</Shell>
-          </PortfolioProvider>
+          <RoundProvider value={round}>
+            <PortfolioProvider>
+              <Shell>{children}</Shell>
+            </PortfolioProvider>
+          </RoundProvider>
         </AccountProvider>
       </body>
     </html>

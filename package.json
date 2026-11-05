@@ -8,6 +8,7 @@
     "start": "next start --hostname 127.0.0.1 --port 3100",
     "lint": "eslint",
     "test": "tsx --test 'src/**/*.test.ts'",
+    "test:e2e": "playwright test",
     "jobs:once": "tsx scripts/run-jobs.ts",
     "campus:review": "tsx scripts/campus-review.ts"
   },
@@ -21,7 +22,9 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -32,5 +35,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
+  },
+  "overrides": {
+    "playwright-core": "1.63.0"
   }
 }

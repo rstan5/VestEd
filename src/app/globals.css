@@ -325,6 +325,8 @@ a.v-menu-item:hover, button.v-menu-item:hover { background: var(--wash); }
 }
 .v-table tbody tr:hover { background: #f6f9f4; }
 .v-table tbody tr[data-self="true"] { background: var(--wash); }
+/* --muted is 4.4:1 on the off-white canvas, below AA for small text. */
+.student .flat { color: var(--quiet); }
 
 .v-skeleton {
   display: block;
@@ -344,4 +346,5 @@ a.v-menu-item:hover, button.v-menu-item:hover { background: var(--wash); }
 @media (prefers-reduced-motion: reduce) {
   .v-skeleton, .v-sheet, .v-scrim { animation: none; }
   .v-nav, .v-btn { transition: none; }
+  .student *, .student *::before, .student *::after { animation: none; transition: none; }
 }

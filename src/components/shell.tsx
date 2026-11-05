@@ -7,8 +7,9 @@ import { signOut } from "@/app/auth/actions";
 import { useAccountState } from "@/lib/account/context";
 import { firstName, initials, type Account } from "@/lib/account/types";
 import { affiliationLabel, campusLine } from "@/lib/campus/types";
-import { countdown, shortDate } from "@/lib/format";
-import { currentRound, rounds, seasonMeta } from "@/lib/sample-data";
+import { rounds } from "@/lib/sample-data";
+import { useCurrentRound } from "@/lib/season/context";
+import { roundCloseLabel } from "@/lib/season/current-round";
 import { usePortfolio } from "@/lib/portfolio-state";
 
 // Routes on the student shell. Research and the legacy club and university sample pages keep the
@@ -44,7 +45,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function StudentShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
-  const round = currentRound();
+  const round = useCurrentRound();
 
   return (
     <div className="student min-h-screen bg-canvas text-ink">
@@ -65,9 +66,11 @@ function StudentShell({ pathname, children }: { pathname: string; children: Reac
           </nav>
           <div className="ml-auto flex items-center gap-2 md:ml-0">
             <span className="hidden lg:inline-flex lg:items-center lg:gap-2">
-              <span className="v-tag" title={`${seasonMeta.name}, ${round.name}. ${countdown(round.end, new Date(seasonMeta.asOf))} on the sample clock.`}>
-                {round.name} · closes {shortDate(round.end)}
-              </span>
+              {round ? (
+                <span className="v-tag" data-testid="shell-round" title={`${round.seasonName}, ${round.roundName}. Server round schedule.`}>
+                  {round.roundName} · {roundCloseLabel(round)}
+                </span>
+              ) : null}
               <Link href="/professor" className="v-nav" data-active={pathname === "/professor"} aria-current={pathname === "/professor" ? "page" : undefined}>Professor</Link>
             </span>
             <AccountMenu />
@@ -229,7 +232,7 @@ const legacyLinks = [
 function LegacyShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const state = useAccountState();
-  const round = currentRound();
+  const round = useCurrentRound();
   const { reset } = usePortfolio();
 
   return (
@@ -264,8 +267,14 @@ function LegacyShell({ pathname, children }: { pathname: string; children: React
                 Menu
               </button>
               <div>
-                <div className="text-[11px] uppercase tracking-[0.08em] text-muted">{seasonMeta.name} · {round.name}</div>
-                <div className="text-sm text-forest">{countdown(round.end)} · closes Nov 13</div>
+                {round ? (
+                  <>
+                    <div className="text-[11px] uppercase tracking-[0.08em] text-muted">{round.seasonName} · {round.roundName}</div>
+                    <div className="text-sm text-forest" data-testid="shell-round">{roundCloseLabel(round)}</div>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted">Sign in to see the current round</div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">

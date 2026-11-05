@@ -8,17 +8,19 @@ import { useAccountState } from "@/lib/account/context";
 import { firstName as firstNameOf } from "@/lib/account/types";
 import { affiliationShort, roleLabel } from "@/lib/campus/types";
 import { CASH_DRAG_THRESHOLD } from "@/lib/domain";
-import { countdown, money, percent, plainPercent, shortDate, tone } from "@/lib/format";
+import { countdown, money, percent, plainPercent, tone } from "@/lib/format";
 import { studentDomainBook } from "@/lib/ledger/client";
 import type { Book } from "@/lib/portfolio";
 import { usePortfolio, useStudentLedger } from "@/lib/portfolio-state";
-import { currentRound, headlines, seasonMeta } from "@/lib/sample-data";
+import { headlines } from "@/lib/sample-data";
+import { useCurrentRound } from "@/lib/season/context";
+import { roundCloseLabel, type CurrentRound } from "@/lib/season/current-round";
 
 export default function HomePage() {
   const { standings, standing } = usePortfolio();
   const student = useStudentLedger();
   const accountState = useAccountState();
-  const round = currentRound();
+  const round = useCurrentRound();
 
   if (accountState.status !== "signed-in") {
     return (
@@ -52,7 +54,7 @@ export default function HomePage() {
   const action = !account.onboarded
     ? { title: "Finish setting up", body: "Add optional profile basics and choose how to continue. No club is needed.", href: "/onboarding", label: "Continue setup" }
     : book
-      ? nextAction(book, round.name, shortDate(round.end))
+      ? nextAction(book, round)
       : { title: "Valuation unavailable", body: "A holding has no stored quote, so your book cannot be valued right now.", href: "/portfolio", label: "Open Portfolio" };
   // No stored valuation history exists for the student's book yet; a sample investor's path is not theirs.
   const points: Array<{ label: string; value: number }> = [];
@@ -61,7 +63,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-[980px]">
       <header>
-        <p className="text-sm text-quiet">{seasonMeta.name} · {round.name}</p>
+        <p className="text-sm text-quiet">{round ? `${round.seasonName} · ${round.roundName}` : "No round scheduled"}</p>
         <h1 className="serif mt-1 text-[40px] leading-[1.1] text-forest md:text-[48px]">{account.onboarded ? "Welcome back" : "Welcome"}, {firstName}.</h1>
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-quiet" data-testid="account-standing">
           {club ? <Tag>{roleLabel(club.role)} · {club.clubName}</Tag> : <Tag>Individual account</Tag>}
@@ -133,11 +135,15 @@ export default function HomePage() {
 
       <section aria-label="Round and rank" className="mt-12 rounded-2xl border border-rule bg-paper">
         <ul className="grid divide-y divide-rule md:grid-cols-[1.3fr_1fr_1fr_1fr_auto] md:divide-x md:divide-y-0">
-          <StripItem label={round.name}>
-            <span className="flex flex-wrap items-center gap-2">
-              <Tag kind="provisional">Provisional</Tag>
-              <span className="text-sm text-forest">{countdown(round.end, new Date(seasonMeta.asOf))}</span>
-            </span>
+          <StripItem label={round?.roundName ?? "Round"}>
+            {round?.status === "live" ? (
+              <span className="flex flex-wrap items-center gap-2">
+                <Tag kind="provisional">Provisional</Tag>
+                <span className="text-sm text-forest">{countdown(round.endsAt)} · {roundCloseLabel(round)}</span>
+              </span>
+            ) : (
+              <span className="text-sm text-quiet">{round ? roundCloseLabel(round) : "No round scheduled"}</span>
+            )}
           </StripItem>
           <StripItem label="Your rank · sample book">
             {official ? (
@@ -187,7 +193,7 @@ export default function HomePage() {
   );
 }
 
-function nextAction(book: Book, roundName: string, closes: string): { title: string; body: string; href: string; label: string } {
+function nextAction(book: Book, round: CurrentRound | null): { title: string; body: string; href: string; label: string } {
   if (book.positions.length === 0) {
     return { title: "Make your first trade", body: "Your book is all cash. Pick one company you can explain in a sentence.", href: "/portfolio", label: "Open Portfolio" };
   }
@@ -199,7 +205,10 @@ function nextAction(book: Book, roundName: string, closes: string): { title: str
   if (top && top.weight > 0.25) {
     return { title: `${top.ticker} is ${plainPercent(top.weight, 0)} of your book`, body: "One position that large drives most of your drawdown risk.", href: "/portfolio", label: "Review your book" };
   }
-  return { title: `${roundName} closes ${closes}`, body: "Check your holdings before the close. Finalized rounds do not change afterward.", href: "/portfolio", label: "Review your book" };
+  if (round?.status !== "live") {
+    return { title: "Review your book", body: "No round is open right now. Your holdings carry into the next round.", href: "/portfolio", label: "Review your book" };
+  }
+  return { title: `${round.roundName} ${roundCloseLabel(round)}`, body: "Check your holdings before the close. Finalized rounds do not change afterward.", href: "/portfolio", label: "Review your book" };
 }
 
 function StripItem({ label, children }: { label: string; children: React.ReactNode }) {
